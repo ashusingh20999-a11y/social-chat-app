@@ -11,7 +11,8 @@ async function ensureSchema(db){
   db.prepare("CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, sender_id TEXT NOT NULL, receiver_id TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"),
   db.prepare("CREATE TABLE IF NOT EXISTS friend_requests (id TEXT PRIMARY KEY, sender_id TEXT NOT NULL, receiver_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(sender_id,receiver_id))"),
   db.prepare("CREATE TABLE IF NOT EXISTS friendships (user_id TEXT NOT NULL, friend_id TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(user_id,friend_id))")
- ]).catch(()=>{});\n try{await db.prepare("ALTER TABLE messages ADD COLUMN conversation_id TEXT").run()}catch(_){}
+ ]).catch(()=>{});
+ try{await db.prepare("ALTER TABLE messages ADD COLUMN conversation_id TEXT").run()}catch(_){}
 }
 export default {async fetch(request,env){
  const url=new URL(request.url); if(url.pathname.startsWith("/api/")){if(request.method==="OPTIONS")return json({});
