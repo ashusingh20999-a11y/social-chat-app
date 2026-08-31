@@ -23,10 +23,14 @@ async function ensureSchema(db){
   if(!names.has("id")){
     await db.prepare("CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL DEFAULT '', sender_id TEXT NOT NULL, receiver_id TEXT NOT NULL, sender_device_id TEXT NOT NULL DEFAULT '', receiver_device_id TEXT NOT NULL DEFAULT '', content TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
   } else if(required.some(n=>!names.has(n))){
+    const conversationExpr=names.has("conversation_id") ? "COALESCE(conversation_id,'')" : "''";
+    const senderDeviceExpr=names.has("sender_device_id") ? "COALESCE(sender_device_id,sender_id)" : "sender_id";
+    const receiverDeviceExpr=names.has("receiver_device_id") ? "COALESCE(receiver_device_id,receiver_id)" : "receiver_id";
+    const createdExpr=names.has("created_at") ? "COALESCE(created_at,CURRENT_TIMESTAMP)" : "CURRENT_TIMESTAMP";
     await db.batch([
       db.prepare("ALTER TABLE messages RENAME TO messages_legacy"),
       db.prepare("CREATE TABLE messages (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL DEFAULT '', sender_id TEXT NOT NULL, receiver_id TEXT NOT NULL, sender_device_id TEXT NOT NULL DEFAULT '', receiver_device_id TEXT NOT NULL DEFAULT '', content TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"),
-      db.prepare("INSERT OR IGNORE INTO messages(id,sender_id,receiver_id,content,created_at,conversation_id,sender_device_id,receiver_device_id) SELECT id,sender_id,receiver_id,content,created_at,COALESCE(conversation_id,''),COALESCE(sender_device_id,sender_id),COALESCE(receiver_device_id,receiver_id) FROM messages_legacy"),
+      db.prepare("INSERT OR IGNORE INTO messages(id,sender_id,receiver_id,content,created_at,conversation_id,sender_device_id,receiver_device_id) SELECT id,sender_id,receiver_id,content,"+createdExpr+","+conversationExpr+","+senderDeviceExpr+","+receiverDeviceExpr+" FROM messages_legacy"),
       db.prepare("DROP TABLE messages_legacy")
     ]);
   }
