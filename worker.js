@@ -43,7 +43,10 @@ export default {async fetch(request,env){
         return json({ok:true,database:"connected",build:BUILD_VERSION});
 
       if(url.pathname==="/api/debug-schema")
-        return json({ok:true,build:BUILD_VERSION,messages:await env.DB.prepare("PRAGMA table_info(messages)").all()});
+        return json({ok:true,build:BUILD_VERSION,
+          users:await env.DB.prepare("PRAGMA table_info(users)").all(),
+          posts:await env.DB.prepare("PRAGMA table_info(posts)").all(),
+          messages:await env.DB.prepare("PRAGMA table_info(messages)").all()});
 
       if(url.pathname==="/api/signup"&&request.method==="POST"){
         const b=await request.json();
@@ -115,24 +118,37 @@ export default {async fetch(request,env){
         if(!u) return json({ok:false,error:"User not found."},404);
         const info=await env.DB.prepare("PRAGMA table_info(posts)").all();
         const schema=info.results||[];
-        const cols=["id","user_id","content"],vals=[uid(),userId,content];
-        const used=new Set(cols);
+        const names=new Set(schema.map(x=>x.name));
+        const id=uid(),cols=[],vals=[];
+        const add=(name,value)=>{if(names.has(name)){cols.push(name);vals.push(value);}};
+        add("id",id);
+        add("user_id",userId);
+        if(names.has("content")) add("content",content);
+        else if(names.has("ciphertext")) add("ciphertext",content);
+        else if(names.has("text")) add("text",content);
         for(const col of schema){
-          if(used.has(col.name)||!col.notnull||col.dflt_value!==null) continue;
+          if(cols.includes(col.name)||!col.notnull||col.dflt_value!==null) continue;
           const n=String(col.name).toLowerCase();
           let v="";
-          if(n.includes("ciphertext")||n.includes("content")||n.includes("text")) v=content;
-          else if(n.includes("nonce")||n.includes("token")||n.endsWith("_id")||n==="id") v=uid();
-          else if(n.includes("user")) v=userId;
+          if(n.includes("ciphertext")||n==="content"||n==="text"||n.includes("body")) v=content;
+          else if(n.includes("nonce")||n.includes("token")) v=uid();
+          else if(n==="user_id"||n.endsWith("_user_id")||n.includes("author")) v=userId;
+          else if(n.endsWith("_id")) v=uid();
           else if(n.includes("device")) v="device:"+userId;
           else if(n.includes("conversation")) v="";
+          else if(n.includes("created")||n.includes("updated")) v=new Date().toISOString();
           else if(String(col.type||"").toUpperCase().includes("INT")) v=0;
           else v="";
-          cols.push(col.name); vals.push(v); used.add(col.name);
+          cols.push(col.name); vals.push(v);
         }
+        if(!cols.includes("id")||!cols.includes("user_id")||(!cols.includes("content")&&!cols.includes("ciphertext")&&!cols.includes("text")))
+          return json({ok:false,error:"Posts table schema is incompatible.",schema},500);
         const placeholders=cols.map(()=>"?").join(",");
-        const id=vals[0];
-        await env.DB.prepare("INSERT INTO posts("+cols.join(",")+") VALUES("+placeholders+")").bind(...vals).run();
+        try{
+          await env.DB.prepare("INSERT INTO posts("+cols.join(",")+") VALUES("+placeholders+")").bind(...vals).run();
+        }catch(insertError){
+          return json({ok:false,error:"Post insert failed: "+(insertError?.message||"unknown"),schema},500);
+        }
         return json({ok:true,id},201);
       }
 
