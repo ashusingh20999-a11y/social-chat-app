@@ -1,43 +1,47 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Social Chat — Home</title>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Social Chat</title>
 <style>
-*{box-sizing:border-box}body{margin:0;background:#f6f7fb;color:#171923;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-.app{max-width:760px;margin:auto;min-height:100vh;background:#fff}
-.top{position:sticky;top:0;z-index:2;background:#fff;border-bottom:1px solid #eee;padding:15px 18px;display:flex;align-items:center;justify-content:space-between}
-.logo{display:flex;gap:10px;align-items:center;font-weight:800;font-size:20px}.bubble{width:38px;height:38px;border-radius:12px;background:#4f46e5;color:#fff;display:grid;place-items:center}
-.icon{border:0;background:#f3f4f6;border-radius:10px;padding:9px 11px;cursor:pointer}
-.content{padding:18px}.welcome{background:linear-gradient(135deg,#eef2ff,#f5f3ff);border-radius:18px;padding:20px;margin-bottom:18px}
-.welcome h1{margin:0 0 6px;font-size:25px}.welcome p{margin:0;color:#6b7280}
-.actions{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:16px}.action{border:1px solid #e5e7eb;background:#fff;border-radius:13px;padding:13px;text-align:center;font-weight:700;font-size:13px}
-.section{font-size:18px;font-weight:800;margin:20px 0 12px}.card{border:1px solid #e8e8ee;border-radius:16px;padding:16px;margin-bottom:12px}.posthead{display:flex;align-items:center;gap:10px;font-weight:700}.avatar{width:40px;height:40px;border-radius:50%;background:#ddd6fe;display:grid;place-items:center;color:#4338ca;font-weight:800}.muted{color:#8a8f9d;font-size:12px}.post{margin:13px 0 0;color:#374151;line-height:1.45}.bottom{position:sticky;bottom:0;background:#fff;border-top:1px solid #eee;display:grid;grid-template-columns:repeat(4,1fr);padding:9px 4px}.nav{border:0;background:transparent;padding:8px;color:#6b7280;font-weight:700;font-size:12px}.nav.active{color:#4f46e5}@media(min-width:761px){body{padding:20px}.app{border:1px solid #e5e7eb;border-radius:20px;overflow:hidden;box-shadow:0 15px 50px rgba(0,0,0,.08)}}
+*{box-sizing:border-box}body{margin:0;background:#f5f6fa;color:#171923;font-family:Inter,system-ui,-apple-system,sans-serif}.app{max-width:760px;margin:auto;min-height:100vh;background:#fff}.top{position:sticky;top:0;z-index:5;background:#fff;border-bottom:1px solid #eee;padding:13px 16px;display:flex;align-items:center;justify-content:space-between}.logo{font-weight:900;font-size:20px}.top-actions{display:flex;gap:8px}.btn{border:0;border-radius:10px;padding:9px 12px;font-weight:700;cursor:pointer}.ghost{background:#f1f2f6}.primary{background:#4f46e5;color:#fff}.content{padding:16px}.welcome{background:linear-gradient(135deg,#eef2ff,#f5f3ff);border-radius:18px;padding:18px;margin-bottom:15px}.welcome h1{margin:0 0 5px;font-size:24px}.muted{color:#7b8190;font-size:12px}.composer{border:1px solid #e5e7eb;border-radius:16px;padding:14px;margin-bottom:16px}.composer textarea{width:100%;border:0;outline:0;resize:none;font:inherit;min-height:65px}.composer-row{display:flex;justify-content:flex-end}.section{font-size:18px;font-weight:800;margin:16px 0 10px}.card{border:1px solid #e7e8ed;border-radius:16px;padding:14px;margin-bottom:12px}.posthead{display:flex;gap:10px;align-items:center}.avatar{width:42px;height:42px;border-radius:50%;background:#ddd6fe;color:#4338ca;display:grid;place-items:center;font-weight:900}.post{margin:12px 0;line-height:1.5;white-space:pre-wrap}.actions{display:flex;gap:8px;border-top:1px solid #f0f0f2;padding-top:10px}.action{border:0;background:#f7f7f9;border-radius:9px;padding:8px 12px;font-weight:700;cursor:pointer}.liked{color:#e11d48}.comments{margin-top:10px}.comment{background:#f7f7f9;border-radius:10px;padding:8px 10px;margin-top:7px;font-size:13px}.commentbox{display:flex;gap:7px;margin-top:9px}.commentbox input{flex:1;border:1px solid #ddd;border-radius:9px;padding:9px}.empty{text-align:center;color:#8b91a0;padding:25px}.bottom{position:sticky;bottom:0;background:#fff;border-top:1px solid #eee;display:grid;grid-template-columns:repeat(4,1fr);padding:7px 3px;z-index:5}.nav{border:0;background:transparent;padding:7px;color:#6b7280;font-weight:700;font-size:12px;cursor:pointer}.nav.active{color:#4f46e5}.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:20;padding:20px}.modal.open{display:grid;place-items:center}.modal-card{width:min(100%,560px);max-height:85vh;overflow:auto;background:#fff;border-radius:18px;padding:18px}.modal-head{display:flex;justify-content:space-between;align-items:center}.chat-list button{width:100%;text-align:left;border:0;background:#f7f7f9;padding:12px;border-radius:11px;margin:5px 0;cursor:pointer}.chat-window{height:420px;display:flex;flex-direction:column}.messages{flex:1;overflow:auto;padding:8px}.msg{max-width:78%;padding:9px 11px;border-radius:12px;margin:6px 0;background:#f0f1f5}.msg.me{margin-left:auto;background:#e0e7ff}.chat-send{display:flex;gap:8px}.chat-send input{flex:1;padding:11px;border:1px solid #ddd;border-radius:10px}@media(min-width:761px){body{padding:20px}.app{border:1px solid #e5e7eb;border-radius:20px;overflow:hidden;box-shadow:0 15px 50px rgba(0,0,0,.08)}} 
 </style>
 </head>
 <body>
 <div class="app">
-<header class="top"><div class="logo"><span class="bubble">💬</span> Social Chat</div><button class="icon" id="logout">Logout</button></header>
+<header class="top"><div class="logo">💬 Social Chat</div><div class="top-actions"><button class="btn ghost" id="messagesBtn">💬</button><button class="btn ghost" id="logout">Logout</button></div></header>
 <main class="content">
-<section class="welcome"><h1 id="welcome">Welcome 👋</h1><p>Your social space is ready.</p>
-<div class="actions"><button class="action">👤 Profile</button><button class="action">💬 Chats</button><button class="action">➕ Create</button></div></section>
-<div class="section">Your feed</div>
-<article class="card"><div class="posthead"><div class="avatar" id="avatar">U</div><div><div id="author">User</div><div class="muted">Just now</div></div></div><div class="post">Welcome to Social Chat! Your feed, friends and private conversations will appear here.</div></article>
-<article class="card"><div class="posthead"><div class="avatar">🌐</div><div><div>Social Chat</div><div class="muted">Community</div></div></div><div class="post">Next we can add posts, likes, comments, follows and private E2EE chat.</div></article>
+<section class="welcome"><h1 id="welcome">Welcome 👋</h1><div class="muted">Share updates and connect with people.</div></section>
+<section class="composer"><textarea id="postText" placeholder="What's on your mind?"></textarea><div class="composer-row"><button class="btn primary" id="postBtn">Post</button></div></section>
+<div class="section">Your Feed</div><div id="feed"><div class="empty">Loading posts…</div></div>
 </main>
-<nav class="bottom"><button class="nav active">⌂<br>Home</button><button class="nav">🔎<br>Search</button><button class="nav">💬<br>Messages</button><button class="nav">👤<br>Profile</button></nav>
+<nav class="bottom"><button class="nav active">⌂<br>Home</button><button class="nav" id="searchBtn">🔎<br>Search</button><button class="nav" id="navMessages">💬<br>Messages</button><button class="nav" id="profileBtn">👤<br>Profile</button></nav>
 </div>
+
+<div class="modal" id="chatModal"><div class="modal-card"><div class="modal-head"><h2 id="chatTitle">Messages</h2><button class="btn ghost" id="closeChat">✕</button></div><div id="chatList" class="chat-list"></div><div id="chatWindow" class="chat-window" style="display:none"><div id="messages" class="messages"></div><div class="chat-send"><input id="chatInput" placeholder="Write a message…"><button class="btn primary" id="sendMsg">Send</button></div></div></div></div>
+
 <script>
 const user=JSON.parse(sessionStorage.getItem("socialChatUser")||"null");
-if(!user){location.href="/";}
-else{
- const name=user.display_name||user.username||"User";
- document.getElementById("welcome").textContent="Welcome, "+name+" 👋";
- document.getElementById("author").textContent=name;
- document.getElementById("avatar").textContent=name.charAt(0).toUpperCase();
-}
-document.getElementById("logout").onclick=()=>{sessionStorage.removeItem("socialChatUser");location.href="/";};
+if(!user) location.href="/";
+const API="/api";
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));
+function nameOf(u){return u.display_name||u.username||"User"}
+$("welcome").textContent="Welcome, "+nameOf(user)+" 👋";
+$("logout").onclick=()=>{sessionStorage.removeItem("socialChatUser");location.href="/";};
+async function get(path){const r=await fetch(API+path);const d=await r.json();if(!r.ok)throw Error(d.error||"Request failed");return d}
+async function send(path,body){const r=await fetch(API+path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});const d=await r.json();if(!r.ok)throw Error(d.error||"Request failed");return d}
+async function loadFeed(){try{const d=await get("/posts");$("feed").innerHTML=d.posts.length?d.posts.map(renderPost).join(""):'<div class="empty">No posts yet. Be the first to post!</div>';attachPostEvents()}catch(e){$("feed").innerHTML='<div class="empty">Unable to load feed.</div>'}}
+function renderPost(p){return '<article class="card" data-id="'+p.id+'"><div class="posthead"><div class="avatar">'+esc(nameOf(p)) .charAt(0).toUpperCase()+'</div><div><b>'+esc(nameOf(p))+'</b><div class="muted">@'+esc(p.username)+' · '+esc(p.created_at)+'</div></div></div><div class="post">'+esc(p.content)+'</div><div class="actions"><button class="action like '+(p.liked?"liked":"")+'">♥ '+p.like_count+'</button><button class="action commentsBtn">💬 '+p.comment_count+'</button></div><div class="comments"></div><div class="commentbox"><input placeholder="Write a comment…"><button class="btn primary commentBtn">Send</button></div></article>'}
+function attachPostEvents(){document.querySelectorAll(".card").forEach(card=>{const id=card.dataset.id;card.querySelector(".like").onclick=async()=>{try{await send("/posts/"+id+"/like",{user_id:user.id});loadFeed()}catch(e){alert(e.message)}};card.querySelector(".commentBtn").onclick=async()=>{const input=card.querySelector("input");if(!input.value.trim())return;try{await send("/posts/"+id+"/comments",{user_id:user.id,content:input.value});input.value="";loadFeed()}catch(e){alert(e.message)}};card.querySelector(".commentsBtn").onclick=async()=>{try{const d=await get("/posts/"+id+"/comments");card.querySelector(".comments").innerHTML=d.comments.map(c=>'<div class="comment"><b>'+esc(c.display_name||c.username)+'</b> '+esc(c.content)+'</div>').join("")||'<div class="muted">No comments yet.</div>'}catch(e){alert(e.message)}}})}
+$("postBtn").onclick=async()=>{const content=$("postText").value.trim();if(!content)return;if(content.length>2000)return alert("Post is too long.");try{await send("/posts",{user_id:user.id,content});$("postText").value="";loadFeed()}catch(e){alert(e.message)}};
+async function openChats(){ $("chatModal").classList.add("open");$("chatWindow").style.display="none";$("chatList").innerHTML="Loading…";try{const d=await get("/users");$("chatList").innerHTML=d.users.filter(x=>x.id!==user.id).map(x=>'<button data-id="'+x.id+'">👤 <b>'+esc(nameOf(x))+'</b><div class="muted">@'+esc(x.username)+'</div></button>').join("")||"No other users yet.";document.querySelectorAll(".chat-list button").forEach(b=>b.onclick=()=>openChat(b.dataset.id,b.textContent.trim()))}catch(e){$("chatList").textContent=e.message}}
+async function openChat(otherId,title){$("chatList").style.display="none";$("chatWindow").style.display="flex";$("chatTitle").textContent=title.split("\n")[0]||"Chat";$("chatWindow").dataset.user=otherId;loadMessages(otherId)}
+async function loadMessages(otherId){try{const d=await get("/messages?user_id="+encodeURIComponent(user.id)+"&with_user_id="+encodeURIComponent(otherId));$("messages").innerHTML=d.messages.map(m=>'<div class="msg '+(m.sender_id===user.id?"me":"")+'">'+esc(m.content)+'<div class="muted">'+esc(m.created_at)+'</div></div>').join("")||'<div class="empty">Start the conversation.</div>';$("messages").scrollTop=$("messages").scrollHeight}catch(e){$("messages").innerHTML='<div class="empty">Unable to load messages.</div>'}}
+$("sendMsg").onclick=async()=>{const otherId=$("chatWindow").dataset.user, input=$("chatInput"), content=input.value.trim();if(!otherId||!content)return;try{await send("/messages",{sender_id:user.id,receiver_id:otherId,content});input.value="";loadMessages(otherId)}catch(e){alert(e.message)}};
+$("chatInput").addEventListener("keydown",e=>{if(e.key==="Enter")$("sendMsg").click()});
+$("messagesBtn").onclick=openChats;$("navMessages").onclick=openChats;$("closeChat").onclick=()=>{$("chatModal").classList.remove("open");$("chatList").style.display="block"};$("searchBtn").onclick=()=>alert("Search will be connected next.");$("profileBtn").onclick=()=>alert("Profile page will be connected next.");
+loadFeed();
 </script>
 </body>
 </html>
