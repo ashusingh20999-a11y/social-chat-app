@@ -1,5 +1,5 @@
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{"content-type":"application/json; charset=utf-8","Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"Content-Type"}});
-const BUILD_VERSION="2026-08-31-msgfix-6";
+const BUILD_VERSION="2026-08-31-msgfix-7";
 const uid=()=>crypto.randomUUID();
 async function hashPassword(password){const data=new TextEncoder().encode(password);const digest=await crypto.subtle.digest("SHA-256",data);return [...new Uint8Array(digest)].map(b=>b.toString(16).padStart(2,"0")).join("")}
 function normalizeUsername(v){return v.trim().replace(/^@/,"").toLowerCase()}
