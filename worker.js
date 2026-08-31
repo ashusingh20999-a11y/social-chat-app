@@ -1,5 +1,5 @@
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{"content-type":"application/json; charset=utf-8","Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"Content-Type"}});
-const uid=()=>crypto.randomUUID();
+const BUILD_VERSION="2026-08-31-msgfix-2";\nconst uid=()=>crypto.randomUUID();
 async function hashPassword(password){const data=new TextEncoder().encode(password);const digest=await crypto.subtle.digest("SHA-256",data);return [...new Uint8Array(digest)].map(b=>b.toString(16).padStart(2,"0")).join("")}
 function normalizeUsername(v){return v.trim().replace(/^@/,"").toLowerCase()}
 async function ensureSchema(db){
@@ -11,23 +11,31 @@ async function ensureSchema(db){
     db.prepare("CREATE TABLE IF NOT EXISTS devices (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, identity_key TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"),
     db.prepare("CREATE TABLE IF NOT EXISTS conversations (id TEXT PRIMARY KEY, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"),
     db.prepare("CREATE TABLE IF NOT EXISTS conversation_members (conversation_id TEXT NOT NULL, device_id TEXT NOT NULL, PRIMARY KEY(conversation_id,device_id))"),
-    db.prepare("CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, conversation_id TEXT, sender_id TEXT NOT NULL, receiver_id TEXT NOT NULL, sender_device_id TEXT, receiver_device_id TEXT, content TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"),
     db.prepare("CREATE TABLE IF NOT EXISTS friend_requests (id TEXT PRIMARY KEY, sender_id TEXT NOT NULL, receiver_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(sender_id,receiver_id))"),
     db.prepare("CREATE TABLE IF NOT EXISTS friendships (user_id TEXT NOT NULL, friend_id TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(user_id,friend_id))")
-  ]).catch(()=>{});
-  for (const sql of [
-    "ALTER TABLE messages ADD COLUMN conversation_id TEXT NOT NULL DEFAULT ''",
-    "ALTER TABLE messages ADD COLUMN sender_device_id TEXT NOT NULL DEFAULT ''",
-    "ALTER TABLE messages ADD COLUMN receiver_device_id TEXT NOT NULL DEFAULT ''"
-  ]) {
-    try { await db.prepare(sql).run(); } catch (_) {}
+  ]);
+
+  const info=await db.prepare("PRAGMA table_info(messages)").all();
+  const cols=info.results||[];
+  const names=new Set(cols.map(x=>x.name));
+  const required=["id","conversation_id","sender_id","receiver_id","sender_device_id","receiver_device_id","content","created_at"];
+
+  if(!names.has("id")){
+    await db.prepare("CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL DEFAULT '', sender_id TEXT NOT NULL, receiver_id TEXT NOT NULL, sender_device_id TEXT NOT NULL DEFAULT '', receiver_device_id TEXT NOT NULL DEFAULT '', content TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+  } else if(required.some(n=>!names.has(n))){
+    await db.batch([
+      db.prepare("ALTER TABLE messages RENAME TO messages_legacy"),
+      db.prepare("CREATE TABLE messages (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL DEFAULT '', sender_id TEXT NOT NULL, receiver_id TEXT NOT NULL, sender_device_id TEXT NOT NULL DEFAULT '', receiver_device_id TEXT NOT NULL DEFAULT '', content TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"),
+      db.prepare("INSERT OR IGNORE INTO messages(id,sender_id,receiver_id,content,created_at,conversation_id,sender_device_id,receiver_device_id) SELECT id,sender_id,receiver_id,content,created_at,COALESCE(conversation_id,''),COALESCE(sender_device_id,sender_id),COALESCE(receiver_device_id,receiver_id) FROM messages_legacy"),
+      db.prepare("DROP TABLE messages_legacy")
+    ]);
   }
 }
 export default {async fetch(request,env){
  const url=new URL(request.url); if(url.pathname.startsWith("/api/")){if(request.method==="OPTIONS")return json({});
  await ensureSchema(env.DB);
  try{
-  if(url.pathname==="/api/health")return json({ok:true,database:"connected"});
+  if(url.pathname==="/api/health")return json({ok:true,database:"connected",build:BUILD_VERSION});
   if(url.pathname==="/api/signup"&&request.method==="POST"){const b=await request.json(),name=String(b.name||"").trim(),username=normalizeUsername(String(b.username||"")),email=String(b.email||"").trim().toLowerCase(),phone=String(b.phone||"").trim(),password=String(b.password||"");if(!name||username.length<3||!email||!phone||password.length<8)return json({ok:false,error:"Please fill all fields correctly."},400);const ex=await env.DB.prepare("SELECT id FROM users WHERE username=? OR email=? LIMIT 1").bind(username,email).first();if(ex)return json({ok:false,error:"Username or email already exists."},409);const id=uid();await env.DB.prepare("INSERT INTO users(id,username,email,password_hash,display_name) VALUES(?,?,?,?,?)").bind(id,username,email,await hashPassword(password),name).run();return json({ok:true,user:{id,username,email,display_name:name}},201)}
   if(url.pathname==="/api/login"&&request.method==="POST"){const b=await request.json(),identity=String(b.identity||"").trim().toLowerCase(),password=String(b.password||"");const u=await env.DB.prepare("SELECT id,username,email,password_hash,display_name,avatar_url FROM users WHERE email=? OR username=? LIMIT 1").bind(identity,normalizeUsername(identity)).first();if(!u||await hashPassword(password)!==u.password_hash)return json({ok:false,error:"Invalid login details."},401);return json({ok:true,message:"Login successful.",user:{id:u.id,username:u.username,email:u.email,display_name:u.display_name,avatar_url:u.avatar_url}})}
   if(url.pathname==="/api/users"&&request.method==="GET"){const r=await env.DB.prepare("SELECT id,username,display_name,avatar_url FROM users ORDER BY display_name,username").all();return json({users:r.results||[]})}
