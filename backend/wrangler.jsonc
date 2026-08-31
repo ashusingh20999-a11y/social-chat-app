@@ -7,7 +7,7 @@
     {
       "binding": "DB",
       "database_name": "social-chat-db",
-      "database_id": "REPLACE_WITH_D1_DATABASE_ID"
+      "database_id": "8bc523fe-292a-4404-9dbf-dd0131999505"
     }
   ]
 }
