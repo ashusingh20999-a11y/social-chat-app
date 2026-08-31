@@ -1,5 +1,5 @@
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{"content-type":"application/json; charset=utf-8","Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"Content-Type"}});
-const BUILD_VERSION="2026-08-31-noassets-10";
+const BUILD_VERSION="2026-08-31-dbfix-11";
 const uid=()=>crypto.randomUUID();
 
 async function hashPassword(password){
@@ -169,7 +169,13 @@ export default {async fetch(request,env){
         ]);
 
         const id=uid();
-        await env.DB.prepare("INSERT INTO messages(id,conversation_id,sender_id,receiver_id,sender_device_id,receiver_device_id,content) VALUES(?,?,?,?,?,?,?)").bind(id,conversationId,sender,receiver,senderDeviceId,receiverDeviceId,content).run();
+        const msgInfo=await env.DB.prepare("PRAGMA table_info(messages)").all();
+        const msgCols=new Set((msgInfo.results||[]).map(x=>x.name));
+        if(msgCols.has("ciphertext")){
+          await env.DB.prepare("INSERT INTO messages(id,conversation_id,sender_id,receiver_id,sender_device_id,receiver_device_id,content,ciphertext) VALUES(?,?,?,?,?,?,?,?)").bind(id,conversationId,sender,receiver,senderDeviceId,receiverDeviceId,content,content).run();
+        }else{
+          await env.DB.prepare("INSERT INTO messages(id,conversation_id,sender_id,receiver_id,sender_device_id,receiver_device_id,content) VALUES(?,?,?,?,?,?,?)").bind(id,conversationId,sender,receiver,senderDeviceId,receiverDeviceId,content).run();
+        }
         return json({ok:true,id,conversation_id:conversationId},201);
       }
 
