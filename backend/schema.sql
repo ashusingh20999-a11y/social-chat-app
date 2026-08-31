@@ -29,8 +29,14 @@ CREATE TABLE IF NOT EXISTS conversation_members (
  PRIMARY KEY(conversation_id,device_id)
 );
 CREATE TABLE IF NOT EXISTS messages (
- id TEXT PRIMARY KEY, sender_id TEXT NOT NULL, receiver_id TEXT NOT NULL,
- content TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+ id TEXT PRIMARY KEY,
+ conversation_id TEXT NOT NULL DEFAULT '',
+ sender_id TEXT NOT NULL,
+ receiver_id TEXT NOT NULL,
+ sender_device_id TEXT NOT NULL DEFAULT '',
+ receiver_device_id TEXT NOT NULL DEFAULT '',
+ content TEXT NOT NULL,
+ created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS friend_requests (
  id TEXT PRIMARY KEY, sender_id TEXT NOT NULL, receiver_id TEXT NOT NULL,
