@@ -43,6 +43,7 @@ document.getElementById("login").addEventListener("submit", async e => {
     });
     sessionStorage.setItem("socialChatUser", JSON.stringify(data.user));
     notify("Login successful. Welcome back!");
+    setTimeout(() => { window.location.href = "/home.html"; }, 500);
   } catch (error) {
     notify(error.message);
   }
@@ -73,6 +74,7 @@ document.getElementById("signup").addEventListener("submit", async e => {
     sessionStorage.setItem("socialChatUser", JSON.stringify(data.user));
     notify("Account created successfully!");
     e.target.reset();
+    setTimeout(() => { window.location.href = "/home.html"; }, 500);
   } catch (error) {
     notify(error.message);
   }
