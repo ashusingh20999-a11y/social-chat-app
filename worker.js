@@ -1,5 +1,6 @@
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{"content-type":"application/json; charset=utf-8","Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"Content-Type"}});
-const BUILD_VERSION="2026-08-31-msgfix-2";\nconst uid=()=>crypto.randomUUID();
+const BUILD_VERSION="2026-08-31-msgfix-2";
+const uid=()=>crypto.randomUUID();
 async function hashPassword(password){const data=new TextEncoder().encode(password);const digest=await crypto.subtle.digest("SHA-256",data);return [...new Uint8Array(digest)].map(b=>b.toString(16).padStart(2,"0")).join("")}
 function normalizeUsername(v){return v.trim().replace(/^@/,"").toLowerCase()}
 async function ensureSchema(db){
@@ -24,13 +25,16 @@ async function ensureSchema(db){
     await db.prepare("CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL DEFAULT '', sender_id TEXT NOT NULL, receiver_id TEXT NOT NULL, sender_device_id TEXT NOT NULL DEFAULT '', receiver_device_id TEXT NOT NULL DEFAULT '', content TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
   } else if(required.some(n=>!names.has(n))){
     const conversationExpr=names.has("conversation_id") ? "COALESCE(conversation_id,'')" : "''";
-    const senderDeviceExpr=names.has("sender_device_id") ? "COALESCE(sender_device_id,sender_id)" : "sender_id";
-    const receiverDeviceExpr=names.has("receiver_device_id") ? "COALESCE(receiver_device_id,receiver_id)" : "receiver_id";
+    const senderExpr=names.has("sender_id") ? "sender_id" : (names.has("sender") ? "sender" : "''");
+    const receiverExpr=names.has("receiver_id") ? "receiver_id" : (names.has("receiver") ? "receiver" : "''");
+    const contentExpr=names.has("content") ? "content" : (names.has("text") ? "text" : "''");
+    const senderDeviceExpr=names.has("sender_device_id") ? "COALESCE(sender_device_id,"+senderExpr+")" : senderExpr;
+    const receiverDeviceExpr=names.has("receiver_device_id") ? "COALESCE(receiver_device_id,"+receiverExpr+")" : receiverExpr;
     const createdExpr=names.has("created_at") ? "COALESCE(created_at,CURRENT_TIMESTAMP)" : "CURRENT_TIMESTAMP";
     await db.batch([
       db.prepare("ALTER TABLE messages RENAME TO messages_legacy"),
       db.prepare("CREATE TABLE messages (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL DEFAULT '', sender_id TEXT NOT NULL, receiver_id TEXT NOT NULL, sender_device_id TEXT NOT NULL DEFAULT '', receiver_device_id TEXT NOT NULL DEFAULT '', content TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"),
-      db.prepare("INSERT OR IGNORE INTO messages(id,sender_id,receiver_id,content,created_at,conversation_id,sender_device_id,receiver_device_id) SELECT id,sender_id,receiver_id,content,"+createdExpr+","+conversationExpr+","+senderDeviceExpr+","+receiverDeviceExpr+" FROM messages_legacy"),
+      db.prepare("INSERT OR IGNORE INTO messages(id,sender_id,receiver_id,content,created_at,conversation_id,sender_device_id,receiver_device_id) SELECT id,"+senderExpr+","+receiverExpr+","+contentExpr+","+createdExpr+","+conversationExpr+","+senderDeviceExpr+","+receiverDeviceExpr+" FROM messages_legacy"),
       db.prepare("DROP TABLE messages_legacy")
     ]);
   }
