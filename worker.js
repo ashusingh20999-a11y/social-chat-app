@@ -1,120 +1,30 @@
-const json = (data, status = 200) =>
-  new Response(JSON.stringify(data), {
-    status,
-    headers: { "content-type": "application/json; charset=utf-8" }
-  });
-
-async function hashPassword(password) {
-  const data = new TextEncoder().encode(password);
-  const digest = await crypto.subtle.digest("SHA-256", data);
-  return [...new Uint8Array(digest)]
-    .map(b => b.toString(16).padStart(2, "0"))
-    .join("");
+const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{"content-type":"application/json; charset=utf-8","Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"Content-Type"}});
+const uid=()=>crypto.randomUUID();
+async function hashPassword(password){const data=new TextEncoder().encode(password);const digest=await crypto.subtle.digest("SHA-256",data);return [...new Uint8Array(digest)].map(b=>b.toString(16).padStart(2,"0")).join("")}
+function normalizeUsername(v){return v.trim().replace(/^@/,"").toLowerCase()}
+async function ensureSchema(db){
+ await db.batch([
+  db.prepare("CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, display_name TEXT, avatar_url TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"),
+  db.prepare("CREATE TABLE IF NOT EXISTS posts (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(user_id) REFERENCES users(id))"),
+  db.prepare("CREATE TABLE IF NOT EXISTS likes (post_id TEXT NOT NULL, user_id TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(post_id,user_id))"),
+  db.prepare("CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, post_id TEXT NOT NULL, user_id TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"),
+  db.prepare("CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, sender_id TEXT NOT NULL, receiver_id TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+ ]).catch(()=>{});
 }
-
-function normalizeUsername(value) {
-  return value.trim().replace(/^@/, "").toLowerCase();
-}
-
-export default {
-  async fetch(request, env) {
-    const url = new URL(request.url);
-
-    if (url.pathname.startsWith("/api/")) {
-      if (request.method === "OPTIONS") {
-        return new Response(null, {
-          headers: {
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type"
-          }
-        });
-      }
-
-      if (url.pathname === "/api/health" && request.method === "GET") {
-        return json({ ok: true, service: "social-chat-api", database: "connected" });
-      }
-
-      if (url.pathname === "/api/signup" && request.method === "POST") {
-        try {
-          const body = await request.json();
-          const name = String(body.name || "").trim();
-          const username = normalizeUsername(String(body.username || ""));
-          const email = String(body.email || "").trim().toLowerCase();
-          const phone = String(body.phone || "").trim();
-          const password = String(body.password || "");
-
-          if (!name || username.length < 3 || !email || !phone || password.length < 8) {
-            return json({ ok: false, error: "Please fill all fields correctly." }, 400);
-          }
-
-          const existing = await env.DB.prepare(
-            "SELECT id FROM users WHERE username = ? OR email = ? LIMIT 1"
-          ).bind(username, email).first();
-
-          if (existing) {
-            return json({ ok: false, error: "Username or email already exists." }, 409);
-          }
-
-          const id = crypto.randomUUID();
-          const passwordHash = await hashPassword(password);
-
-          await env.DB.prepare(
-            "INSERT INTO users (id, username, email, password_hash, display_name) VALUES (?, ?, ?, ?, ?)"
-          ).bind(id, username, email, passwordHash, name).run();
-
-          return json({
-            ok: true,
-            message: "Account created successfully.",
-            user: { id, username, email, display_name: name }
-          }, 201);
-        } catch {
-          return json({ ok: false, error: "Unable to create account." }, 500);
-        }
-      }
-
-      if (url.pathname === "/api/login" && request.method === "POST") {
-        try {
-          const body = await request.json();
-          const identity = String(body.identity || "").trim().toLowerCase();
-          const password = String(body.password || "");
-
-          if (!identity || !password) {
-            return json({ ok: false, error: "Email/username and password are required." }, 400);
-          }
-
-          const user = await env.DB.prepare(
-            "SELECT id, username, email, password_hash, display_name, avatar_url FROM users WHERE email = ? OR username = ? LIMIT 1"
-          ).bind(identity, normalizeUsername(identity)).first();
-
-          if (!user) {
-            return json({ ok: false, error: "Invalid login details." }, 401);
-          }
-
-          const passwordHash = await hashPassword(password);
-          if (passwordHash !== user.password_hash) {
-            return json({ ok: false, error: "Invalid login details." }, 401);
-          }
-
-          return json({
-            ok: true,
-            message: "Login successful.",
-            user: {
-              id: user.id,
-              username: user.username,
-              email: user.email,
-              display_name: user.display_name,
-              avatar_url: user.avatar_url
-            }
-          });
-        } catch {
-          return json({ ok: false, error: "Unable to login." }, 500);
-        }
-      }
-
-      return json({ ok: false, error: "API route not found." }, 404);
-    }
-
-    return env.ASSETS.fetch(request);
-  }
-};
+export default {async fetch(request,env){
+ const url=new URL(request.url); if(url.pathname.startsWith("/api/")){if(request.method==="OPTIONS")return json({});
+ await ensureSchema(env.DB);
+ try{
+  if(url.pathname==="/api/health")return json({ok:true,database:"connected"});
+  if(url.pathname==="/api/signup"&&request.method==="POST"){const b=await request.json(),name=String(b.name||"").trim(),username=normalizeUsername(String(b.username||"")),email=String(b.email||"").trim().toLowerCase(),phone=String(b.phone||"").trim(),password=String(b.password||"");if(!name||username.length<3||!email||!phone||password.length<8)return json({ok:false,error:"Please fill all fields correctly."},400);const ex=await env.DB.prepare("SELECT id FROM users WHERE username=? OR email=? LIMIT 1").bind(username,email).first();if(ex)return json({ok:false,error:"Username or email already exists."},409);const id=uid();await env.DB.prepare("INSERT INTO users(id,username,email,password_hash,display_name) VALUES(?,?,?,?,?)").bind(id,username,email,await hashPassword(password),name).run();return json({ok:true,user:{id,username,email,display_name:name}},201)}
+  if(url.pathname==="/api/login"&&request.method==="POST"){const b=await request.json(),identity=String(b.identity||"").trim().toLowerCase(),password=String(b.password||"");const u=await env.DB.prepare("SELECT id,username,email,password_hash,display_name,avatar_url FROM users WHERE email=? OR username=? LIMIT 1").bind(identity,normalizeUsername(identity)).first();if(!u||await hashPassword(password)!==u.password_hash)return json({ok:false,error:"Invalid login details."},401);return json({ok:true,message:"Login successful.",user:{id:u.id,username:u.username,email:u.email,display_name:u.display_name,avatar_url:u.avatar_url}})}
+  if(url.pathname==="/api/users"&&request.method==="GET"){const r=await env.DB.prepare("SELECT id,username,display_name,avatar_url FROM users ORDER BY display_name,username").all();return json({users:r.results||[]})}
+  if(url.pathname==="/api/posts"&&request.method==="GET"){const me=url.searchParams.get("user_id")||"";const r=await env.DB.prepare("SELECT p.id,p.user_id,p.content,p.created_at,u.username,u.display_name,u.avatar_url,(SELECT COUNT(*) FROM likes l WHERE l.post_id=p.id) like_count,(SELECT COUNT(*) FROM comments c WHERE c.post_id=p.id) comment_count,(SELECT COUNT(*) FROM likes l2 WHERE l2.post_id=p.id AND l2.user_id=?) liked FROM posts p JOIN users u ON u.id=p.user_id ORDER BY p.created_at DESC LIMIT 50").bind(me).all();return json({posts:r.results||[]})}
+  if(url.pathname==="/api/posts"&&request.method==="POST"){const b=await request.json(),content=String(b.content||"").trim(),userId=String(b.user_id||"");if(!userId||!content)return json({ok:false,error:"Post cannot be empty."},400);if(content.length>2000)return json({ok:false,error:"Post is too long."},400);const u=await env.DB.prepare("SELECT id FROM users WHERE id=?").bind(userId).first();if(!u)return json({ok:false,error:"User not found."},404);const id=uid();await env.DB.prepare("INSERT INTO posts(id,user_id,content) VALUES(?,?,?)").bind(id,userId,content).run();return json({ok:true,id},201)}
+  const likeMatch=url.pathname.match(/^\/api\/posts\/([^/]+)\/like$/);if(likeMatch&&request.method==="POST"){const postId=likeMatch[1],b=await request.json(),userId=String(b.user_id||"");const ex=await env.DB.prepare("SELECT post_id FROM likes WHERE post_id=? AND user_id=?").bind(postId,userId).first();if(ex)await env.DB.prepare("DELETE FROM likes WHERE post_id=? AND user_id=?").bind(postId,userId).run();else await env.DB.prepare("INSERT INTO likes(post_id,user_id) VALUES(?,?)").bind(postId,userId).run();return json({ok:true,liked:!ex})}
+  const commentMatch=url.pathname.match(/^\/api\/posts\/([^/]+)\/comments$/);if(commentMatch&&request.method==="GET"){const r=await env.DB.prepare("SELECT c.id,c.content,c.created_at,u.username,u.display_name FROM comments c JOIN users u ON u.id=c.user_id WHERE c.post_id=? ORDER BY c.created_at ASC").bind(commentMatch[1]).all();return json({comments:r.results||[]})}
+  if(commentMatch&&request.method==="POST"){const b=await request.json(),content=String(b.content||"").trim(),userId=String(b.user_id||"");if(!content||!userId)return json({ok:false,error:"Comment cannot be empty."},400);const id=uid();await env.DB.prepare("INSERT INTO comments(id,post_id,user_id,content) VALUES(?,?,?,?)").bind(id,commentMatch[1],userId,content).run();return json({ok:true,id},201)}
+  if(url.pathname==="/api/messages"&&request.method==="GET"){const a=url.searchParams.get("user_id"),b=url.searchParams.get("with_user_id");if(!a||!b)return json({messages:[]});const r=await env.DB.prepare("SELECT id,sender_id,receiver_id,content,created_at FROM messages WHERE (sender_id=? AND receiver_id=?) OR (sender_id=? AND receiver_id=?) ORDER BY created_at ASC LIMIT 200").bind(a,b,b,a).all();return json({messages:r.results||[]})}
+  if(url.pathname==="/api/messages"&&request.method==="POST"){const b=await request.json(),sender=String(b.sender_id||""),receiver=String(b.receiver_id||""),content=String(b.content||"").trim();if(!sender||!receiver||!content)return json({ok:false,error:"Message cannot be empty."},400);if(content.length>5000)return json({ok:false,error:"Message is too long."},400);const id=uid();await env.DB.prepare("INSERT INTO messages(id,sender_id,receiver_id,content) VALUES(?,?,?,?)").bind(id,sender,receiver,content).run();return json({ok:true,id},201)}
+  return json({ok:false,error:"API route not found."},404);
+ }catch(e){return json({ok:false,error:"Server error: "+(e?.message||"unknown")},500)}}return env.ASSETS.fetch(request)} };
