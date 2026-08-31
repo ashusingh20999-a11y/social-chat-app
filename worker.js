@@ -1,5 +1,5 @@
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{"content-type":"application/json; charset=utf-8","Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"Content-Type"}});
-const BUILD_VERSION="2026-08-31-ui-14-post-fix";
+const BUILD_VERSION="2026-08-31-ui-15-post-schema";
 const uid=()=>crypto.randomUUID();
 
 async function hashPassword(password){
@@ -114,12 +114,22 @@ export default {async fetch(request,env){
         const u=await env.DB.prepare("SELECT id FROM users WHERE id=?").bind(userId).first();
         if(!u) return json({ok:false,error:"User not found."},404);
         const info=await env.DB.prepare("PRAGMA table_info(posts)").all();
-        const names=new Set((info.results||[]).map(x=>x.name));
+        const schema=info.results||[];
         const cols=["id","user_id","content"],vals=[uid(),userId,content];
-        if(names.has("ciphertext")){cols.push("ciphertext");vals.push(content)}
-        if(names.has("nonce")){cols.push("nonce");vals.push(uid())}
-        if(names.has("conversation_id")){cols.push("conversation_id");vals.push("")}
-        if(names.has("device_id")){cols.push("device_id");vals.push("device:"+userId)}
+        const used=new Set(cols);
+        for(const col of schema){
+          if(used.has(col.name)||!col.notnull||col.dflt_value!==null) continue;
+          const n=String(col.name).toLowerCase();
+          let v="";
+          if(n.includes("ciphertext")||n.includes("content")||n.includes("text")) v=content;
+          else if(n.includes("nonce")||n.includes("token")||n.endsWith("_id")||n==="id") v=uid();
+          else if(n.includes("user")) v=userId;
+          else if(n.includes("device")) v="device:"+userId;
+          else if(n.includes("conversation")) v="";
+          else if(String(col.type||"").toUpperCase().includes("INT")) v=0;
+          else v="";
+          cols.push(col.name); vals.push(v); used.add(col.name);
+        }
         const placeholders=cols.map(()=>"?").join(",");
         const id=vals[0];
         await env.DB.prepare("INSERT INTO posts("+cols.join(",")+") VALUES("+placeholders+")").bind(...vals).run();
