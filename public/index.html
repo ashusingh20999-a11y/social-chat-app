@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Social Chat — Login & Sign Up</title>
+  <meta name="description" content="Secure login and sign up for Social Chat.">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="page">
+    <section class="brand-panel">
+      <div class="brand">
+        <div class="logo">💬</div>
+        <div>
+          <h1>Social Chat</h1>
+          <p>Connect. Chat. Share.</p>
+        </div>
+      </div>
+      <div class="hero-copy">
+        <span class="pill">PRIVATE • FAST • SIMPLE</span>
+        <h2>Talk to the people<br><span>who matter.</span></h2>
+        <p>Sign in or create your account to start chatting.</p>
+      </div>
+      <div class="brand-footer">Your conversations, your community.</div>
+    </section>
+
+    <section class="auth-panel">
+      <div class="auth-card">
+        <div class="tabs">
+          <button class="tab active" data-target="login">Login</button>
+          <button class="tab" data-target="signup">Create account</button>
+        </div>
+
+        <div id="message" class="message" role="alert"></div>
+
+        <form id="login" class="form active">
+          <div class="heading">
+            <h2>Welcome back 👋</h2>
+            <p>Login to continue to Social Chat.</p>
+          </div>
+
+          <label>Email or username
+            <input id="loginIdentity" type="text" placeholder="you@example.com" autocomplete="username" required>
+          </label>
+
+          <label>Password
+            <div class="password-wrap">
+              <input id="loginPassword" type="password" placeholder="Enter your password" autocomplete="current-password" required>
+              <button type="button" class="show-pass" data-for="loginPassword">Show</button>
+            </div>
+          </label>
+
+          <div class="row between">
+            <label class="check"><input type="checkbox" id="remember"> Remember me</label>
+            <button type="button" class="link" id="forgotBtn">Forgot password?</button>
+          </div>
+
+          <button class="primary" type="submit">Login</button>
+          <div class="divider"><span>or</span></div>
+          <button class="google" type="button" id="googleBtn"><span>G</span> Continue with Google</button>
+
+          <p class="switch">New here? <button type="button" class="link switch-tab" data-target="signup">Create an account</button></p>
+        </form>
+
+        <form id="signup" class="form">
+          <div class="heading">
+            <h2>Create your account</h2>
+            <p>Join Social Chat in a few seconds.</p>
+          </div>
+
+          <label>Full name
+            <input id="name" type="text" placeholder="Your name" autocomplete="name" required>
+          </label>
+
+          <label>Username
+            <input id="username" type="text" placeholder="@username" autocomplete="username" minlength="3" required>
+          </label>
+
+          <label>Email
+            <input id="email" type="email" placeholder="you@example.com" autocomplete="email" required>
+          </label>
+
+          <label>Mobile number
+            <input id="phone" type="tel" placeholder="+91 98765 43210" autocomplete="tel" required>
+          </label>
+
+          <div class="two">
+            <label>Password
+              <div class="password-wrap">
+                <input id="password" type="password" placeholder="Create password" autocomplete="new-password" minlength="8" required>
+                <button type="button" class="show-pass" data-for="password">Show</button>
+              </div>
+            </label>
+            <label>Confirm password
+              <input id="confirmPassword" type="password" placeholder="Repeat password" autocomplete="new-password" minlength="8" required>
+            </label>
+          </div>
+
+          <label class="check terms"><input type="checkbox" id="terms" required> I agree to the Terms and Privacy Policy.</label>
+
+          <button class="primary" type="submit">Create account</button>
+          <div class="divider"><span>or</span></div>
+          <button class="google" type="button" id="googleSignupBtn"><span>G</span> Sign up with Google</button>
+
+          <p class="switch">Already have an account? <button type="button" class="link switch-tab" data-target="login">Login</button></p>
+        </form>
+
+        <div id="forgot" class="form">
+          <div class="heading">
+            <h2>Reset your password</h2>
+            <p>Enter your email and we'll send a reset code.</p>
+          </div>
+          <label>Email
+            <input id="resetEmail" type="email" placeholder="you@example.com" autocomplete="email">
+          </label>
+          <button class="primary" id="resetBtn" type="button">Send reset code</button>
+          <p class="switch"><button type="button" class="link switch-tab" data-target="login">← Back to login</button></p>
+        </div>
+
+        <div class="security-note">🔒 Passwords are protected. Real account storage and OTP verification will be connected next.</div>
+      </div>
+    </section>
+  </main>
+  <script src="script.js"></script>
+</body>
+</html>
