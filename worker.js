@@ -3,16 +3,25 @@ const uid=()=>crypto.randomUUID();
 async function hashPassword(password){const data=new TextEncoder().encode(password);const digest=await crypto.subtle.digest("SHA-256",data);return [...new Uint8Array(digest)].map(b=>b.toString(16).padStart(2,"0")).join("")}
 function normalizeUsername(v){return v.trim().replace(/^@/,"").toLowerCase()}
 async function ensureSchema(db){
- await db.batch([
-  db.prepare("CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, display_name TEXT, avatar_url TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"),
-  db.prepare("CREATE TABLE IF NOT EXISTS posts (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(user_id) REFERENCES users(id))"),
-  db.prepare("CREATE TABLE IF NOT EXISTS likes (post_id TEXT NOT NULL, user_id TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(post_id,user_id))"),
-  db.prepare("CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, post_id TEXT NOT NULL, user_id TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"),
-  db.prepare("CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, sender_id TEXT NOT NULL, receiver_id TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"),
-  db.prepare("CREATE TABLE IF NOT EXISTS friend_requests (id TEXT PRIMARY KEY, sender_id TEXT NOT NULL, receiver_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(sender_id,receiver_id))"),
-  db.prepare("CREATE TABLE IF NOT EXISTS friendships (user_id TEXT NOT NULL, friend_id TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(user_id,friend_id))")
- ]).catch(()=>{});
- try{await db.prepare("ALTER TABLE messages ADD COLUMN conversation_id TEXT").run()}catch(_){}
+  await db.batch([
+    db.prepare("CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, display_name TEXT, avatar_url TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS posts (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(user_id) REFERENCES users(id))"),
+    db.prepare("CREATE TABLE IF NOT EXISTS likes (post_id TEXT NOT NULL, user_id TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(post_id,user_id))"),
+    db.prepare("CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, post_id TEXT NOT NULL, user_id TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS devices (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, identity_key TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS conversations (id TEXT PRIMARY KEY, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS conversation_members (conversation_id TEXT NOT NULL, device_id TEXT NOT NULL, PRIMARY KEY(conversation_id,device_id))"),
+    db.prepare("CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, conversation_id TEXT, sender_id TEXT NOT NULL, receiver_id TEXT NOT NULL, sender_device_id TEXT, receiver_device_id TEXT, content TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS friend_requests (id TEXT PRIMARY KEY, sender_id TEXT NOT NULL, receiver_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(sender_id,receiver_id))"),
+    db.prepare("CREATE TABLE IF NOT EXISTS friendships (user_id TEXT NOT NULL, friend_id TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(user_id,friend_id))")
+  ]).catch(()=>{});
+  for (const sql of [
+    "ALTER TABLE messages ADD COLUMN conversation_id TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE messages ADD COLUMN sender_device_id TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE messages ADD COLUMN receiver_device_id TEXT NOT NULL DEFAULT ''"
+  ]) {
+    try { await db.prepare(sql).run(); } catch (_) {}
+  }
 }
 export default {async fetch(request,env){
  const url=new URL(request.url); if(url.pathname.startsWith("/api/")){if(request.method==="OPTIONS")return json({});
@@ -32,6 +41,6 @@ export default {async fetch(request,env){
   const commentMatch=url.pathname.match(/^\/api\/posts\/([^/]+)\/comments$/);if(commentMatch&&request.method==="GET"){const r=await env.DB.prepare("SELECT c.id,c.content,c.created_at,u.username,u.display_name FROM comments c JOIN users u ON u.id=c.user_id WHERE c.post_id=? ORDER BY c.created_at ASC").bind(commentMatch[1]).all();return json({comments:r.results||[]})}
   if(commentMatch&&request.method==="POST"){const b=await request.json(),content=String(b.content||"").trim(),userId=String(b.user_id||"");if(!content||!userId)return json({ok:false,error:"Comment cannot be empty."},400);const id=uid();await env.DB.prepare("INSERT INTO comments(id,post_id,user_id,content) VALUES(?,?,?,?)").bind(id,commentMatch[1],userId,content).run();return json({ok:true,id},201)}
   if(url.pathname==="/api/messages"&&request.method==="GET"){const a=url.searchParams.get("user_id"),b=url.searchParams.get("with_user_id");if(!a||!b)return json({messages:[]});const r=await env.DB.prepare("SELECT id,sender_id,receiver_id,content,created_at FROM messages WHERE (sender_id=? AND receiver_id=?) OR (sender_id=? AND receiver_id=?) ORDER BY created_at ASC LIMIT 200").bind(a,b,b,a).all();return json({messages:r.results||[]})}
-  if(url.pathname==="/api/messages"&&request.method==="POST"){const b=await request.json(),sender=String(b.sender_id||""),receiver=String(b.receiver_id||""),content=String(b.content||"").trim();if(!sender||!receiver||!content)return json({ok:false,error:"Message cannot be empty."},400);if(content.length>5000)return json({ok:false,error:"Message is too long."},400);const id=uid();const conversationId=[sender,receiver].sort().join(":");await env.DB.prepare("INSERT INTO messages(id,conversation_id,sender_id,receiver_id,content) VALUES(?,?,?,?,?)").bind(id,conversationId,sender,receiver,content).run();return json({ok:true,id},201)}
+  if(url.pathname==="/api/messages"&&request.method==="POST"){const b=await request.json(),sender=String(b.sender_id||""),receiver=String(b.receiver_id||""),content=String(b.content||"").trim();if(!sender||!receiver||!content)return json({ok:false,error:"Message cannot be empty."},400);if(content.length>5000)return json({ok:false,error:"Message is too long."},400);const users=await env.DB.prepare("SELECT id FROM users WHERE id IN (?,?)").bind(sender,receiver).all();if((users.results||[]).length!==2)return json({ok:false,error:"User not found."},404);const conversationId=[sender,receiver].sort().join(":");const senderDeviceId=sender;const receiverDeviceId=receiver;await env.DB.batch([env.DB.prepare("INSERT OR IGNORE INTO devices(id,user_id,identity_key) VALUES(?,?,?)").bind(senderDeviceId,sender,uid()),env.DB.prepare("INSERT OR IGNORE INTO devices(id,user_id,identity_key) VALUES(?,?,?)").bind(receiverDeviceId,receiver,uid()),env.DB.prepare("INSERT OR IGNORE INTO conversations(id) VALUES(?)").bind(conversationId),env.DB.prepare("INSERT OR IGNORE INTO conversation_members(conversation_id,device_id) VALUES(?,?)").bind(conversationId,senderDeviceId),env.DB.prepare("INSERT OR IGNORE INTO conversation_members(conversation_id,device_id) VALUES(?,?)").bind(conversationId,receiverDeviceId)]);const id=uid();await env.DB.prepare("INSERT INTO messages(id,conversation_id,sender_id,receiver_id,sender_device_id,receiver_device_id,content) VALUES(?,?,?,?,?,?,?)").bind(id,conversationId,sender,receiver,senderDeviceId,receiverDeviceId,content).run();return json({ok:true,id},201)}
   return json({ok:false,error:"API route not found."},404);
  }catch(e){return json({ok:false,error:"Server error: "+(e?.message||"unknown")},500)}}return env.ASSETS.fetch(request)} };
