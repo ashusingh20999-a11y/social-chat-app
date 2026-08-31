@@ -3,5 +3,15 @@
   "name": "social-chat-app",
   "main": "worker.js",
   "compatibility_date": "2026-08-31",
-  "assets": { "directory": "./public", "binding": "ASSETS" }
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "social-chat-db",
+      "database_id": "8bc523fe-292a-4404-9dbf-dd0131999505"
+    }
+  ]
 }
