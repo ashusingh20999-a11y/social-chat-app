@@ -1,5 +1,5 @@
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{"content-type":"application/json; charset=utf-8","Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"Content-Type"}});
-const BUILD_VERSION="2026-08-31-ui-15-post-schema";
+const BUILD_VERSION="2026-09-01-post-message-legacy-fix";
 const uid=()=>crypto.randomUUID();
 
 async function hashPassword(password){
@@ -29,7 +29,18 @@ async function ensureSchema(db){
   if(!names.has("conversation_id")) alters.push(db.prepare("ALTER TABLE messages ADD COLUMN conversation_id TEXT NOT NULL DEFAULT ''"));
   if(!names.has("sender_device_id")) alters.push(db.prepare("ALTER TABLE messages ADD COLUMN sender_device_id TEXT NOT NULL DEFAULT ''"));
   if(!names.has("receiver_device_id")) alters.push(db.prepare("ALTER TABLE messages ADD COLUMN receiver_device_id TEXT NOT NULL DEFAULT ''"));
+  if(!names.has("content")) alters.push(db.prepare("ALTER TABLE messages ADD COLUMN content TEXT"));
+  if(!names.has("ciphertext")) alters.push(db.prepare("ALTER TABLE messages ADD COLUMN ciphertext TEXT"));
+  if(!names.has("nonce")) alters.push(db.prepare("ALTER TABLE messages ADD COLUMN nonce TEXT"));
   if(alters.length) await db.batch(alters);
+
+  const postInfo=await db.prepare("PRAGMA table_info(posts)").all();
+  const postNames=new Set((postInfo.results||[]).map(x=>x.name));
+  const postAlters=[];
+  if(!postNames.has("content")) postAlters.push(db.prepare("ALTER TABLE posts ADD COLUMN content TEXT"));
+  if(!postNames.has("ciphertext")) postAlters.push(db.prepare("ALTER TABLE posts ADD COLUMN ciphertext TEXT"));
+  if(!postNames.has("nonce")) postAlters.push(db.prepare("ALTER TABLE posts ADD COLUMN nonce TEXT"));
+  if(postAlters.length) await db.batch(postAlters);
 }
 
 export default {async fetch(request,env){
@@ -108,7 +119,7 @@ export default {async fetch(request,env){
         const me=url.searchParams.get("user_id")||"";
         const info=await env.DB.prepare("PRAGMA table_info(posts)").all();
         const names=new Set((info.results||[]).map(x=>x.name));
-        const contentCol=names.has("content")?"p.content":(names.has("ciphertext")?"p.ciphertext":(names.has("text")?"p.text:"''"));
+        const contentCol=names.has("content")?"p.content":(names.has("ciphertext")?"p.ciphertext":(names.has("text")?"p.text":"''"));
         if(contentCol==="''") return json({posts:[],error:"Posts table has no content column."},500);
         const r=await env.DB.prepare("SELECT p.id,p.user_id,"+contentCol+" AS content,p.created_at,u.username,u.display_name,u.avatar_url,(SELECT COUNT(*) FROM likes l WHERE l.post_id=p.id) like_count,(SELECT COUNT(*) FROM comments c WHERE c.post_id=p.id) comment_count,(SELECT COUNT(*) FROM likes l2 WHERE l2.post_id=p.id AND l2.user_id=?) liked FROM posts p JOIN users u ON u.id=p.user_id ORDER BY p.created_at DESC LIMIT 50").bind(me).all();
         return json({posts:r.results||[]});
@@ -207,14 +218,43 @@ export default {async fetch(request,env){
         ]);
 
         const id=uid();
-        const msgInfo=await env.DB.prepare("PRAGMA table_info(messages)").all();
-        const msgCols=new Set((msgInfo.results||[]).map(x=>x.name));
-        const cols=["id","conversation_id","sender_id","receiver_id","sender_device_id","receiver_device_id","content"];
-        const vals=[id,conversationId,sender,receiver,senderDeviceId,receiverDeviceId,content];
-        if(msgCols.has("ciphertext")){ cols.push("ciphertext"); vals.push(content); }
-        if(msgCols.has("nonce")){ cols.push("nonce"); vals.push(uid()); }
-        const placeholders=cols.map(()=>"?").join(",");
-        await env.DB.prepare("INSERT INTO messages("+cols.join(",")+") VALUES("+placeholders+")").bind(...vals).run();
+        const msgSchema=await env.DB.prepare("PRAGMA table_info(messages)").all();
+        const schema=msgSchema.results||[];
+        const names=new Set(schema.map(x=>x.name));
+        const cols=[],vals=[];
+        const add=(name,value)=>{if(names.has(name)){cols.push(name);vals.push(value);}};
+        add("id",id);
+        add("conversation_id",conversationId);
+        add("sender_id",sender);
+        add("receiver_id",receiver);
+        add("sender_device_id",senderDeviceId);
+        add("receiver_device_id",receiverDeviceId);
+        if(names.has("content")) add("content",content);
+        else if(names.has("ciphertext")) add("ciphertext",content);
+        for(const col of schema){
+          if(cols.includes(col.name)||!col.notnull||col.dflt_value!==null) continue;
+          const n=String(col.name).toLowerCase();
+          let v="";
+          if(n.includes("ciphertext")||n==="content"||n==="text"||n.includes("body")) v=content;
+          else if(n.includes("nonce")||n.includes("token")) v=uid();
+          else if(n==="sender_id"||n==="receiver_id"||n.endsWith("_user_id")) v=(n==="sender_id"?sender:receiver);
+          else if(n.includes("sender_device")) v=senderDeviceId;
+          else if(n.includes("receiver_device")) v=receiverDeviceId;
+          else if(n.includes("conversation")) v=conversationId;
+          else if(n.endsWith("_id")) v=uid();
+          else if(n.includes("created")||n.includes("updated")) v=new Date().toISOString();
+          else if(String(col.type||"").toUpperCase().includes("INT")) v=0;
+          cols.push(col.name); vals.push(v);
+        }
+        if(!cols.includes("id")||!cols.includes("sender_id")||!cols.includes("receiver_id")||
+           (!cols.includes("content")&&!cols.includes("ciphertext")))
+          return json({ok:false,error:"Messages table schema is incompatible.",schema},500);
+        try{
+          const placeholders=cols.map(()=>"?").join(",");
+          await env.DB.prepare("INSERT INTO messages("+cols.join(",")+") VALUES("+placeholders+")").bind(...vals).run();
+        }catch(insertError){
+          return json({ok:false,error:"Message insert failed: "+(insertError?.message||"unknown"),schema},500);
+        }
         return json({ok:true,id,conversation_id:conversationId},201);
       }
 
