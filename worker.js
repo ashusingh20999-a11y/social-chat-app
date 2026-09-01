@@ -1,5 +1,5 @@
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{"content-type":"application/json; charset=utf-8","Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"Content-Type"}});
-const BUILD_VERSION="2026-09-01-post-feed-schema-safe";
+const BUILD_VERSION="2026-09-01-feed-safe-read";
 const uid=()=>crypto.randomUUID();
 
 async function hashPassword(password){
@@ -118,64 +118,35 @@ export default {async fetch(request,env){
       if(url.pathname==="/api/posts"&&request.method==="GET"){
         const me=url.searchParams.get("user_id")||"";
         try{
-          // Read the actual schema first so an older D1 users/posts table
-          // cannot break the entire feed because of one missing column.
-          const ps=await env.DB.prepare("PRAGMA table_info(posts)").all();
-          const us=await env.DB.prepare("PRAGMA table_info(users)").all();
-          const pn=new Set((ps.results||[]).map(x=>x.name));
-          const un=new Set((us.results||[]).map(x=>x.name));
-
-          const contentCol=pn.has("content")?"p.content":
-            (pn.has("text")?"p.text":
-            (pn.has("ciphertext")?"p.ciphertext":
-            (pn.has("body")?"p.body":"''")));
-          const dateCol=pn.has("created_at")?"p.created_at":
-            (pn.has("createdAt")?"p.createdAt":"CURRENT_TIMESTAMP");
-          const nameCol=un.has("display_name")?"u.display_name":
-            (un.has("name")?"u.name":"u.username");
-
-          if(contentCol==="''")
-            return json({ok:false,posts:[],error:"Posts table has no content column.",build:BUILD_VERSION},500);
-
-          const sql="SELECT p.id,p.user_id,"+contentCol+" AS content,"+dateCol+" AS created_at,"+
-            "u.username,"+nameCol+" AS display_name "+
+          // Keep feed reads independent of an optional/mismatched user row.
+          // LEFT JOIN means one bad/orphaned post cannot make the whole feed fail.
+          const base=await env.DB.prepare(
+            "SELECT p.id,p.user_id,COALESCE(p.content,p.ciphertext,'') AS content,p.created_at,"+
+            "COALESCE(u.username,'unknown') AS username,"+
+            "COALESCE(u.display_name,'User') AS display_name,"+
+            "COALESCE(u.avatar_url,'') AS avatar_url "+
             "FROM posts p LEFT JOIN users u ON u.id=p.user_id "+
-            "ORDER BY "+dateCol+" DESC LIMIT 50";
-
-          const base=await env.DB.prepare(sql).all();
+            "ORDER BY p.created_at DESC LIMIT 50"
+          ).all();
           const posts=base.results||[];
-
           for(const p of posts){
             try{
               const l=await env.DB.prepare("SELECT COUNT(*) AS n FROM likes WHERE post_id=?").bind(p.id).first();
               p.like_count=Number(l?.n||0);
             }catch(_){p.like_count=0}
-
             try{
               const cm=await env.DB.prepare("SELECT COUNT(*) AS n FROM comments WHERE post_id=?").bind(p.id).first();
               p.comment_count=Number(cm?.n||0);
             }catch(_){p.comment_count=0}
-
             try{
-              const liked=me?await env.DB.prepare(
-                "SELECT post_id FROM likes WHERE post_id=? AND user_id=? LIMIT 1"
-              ).bind(p.id,me).first():null;
+              const liked=me?await env.DB.prepare("SELECT post_id FROM likes WHERE post_id=? AND user_id=? LIMIT 1").bind(p.id,me).first():null;
               p.liked=liked?1:0;
             }catch(_){p.liked=0}
-
-            p.display_name=p.display_name||p.username||"User";
-            p.username=p.username||"user";
           }
-
           return json({ok:true,posts,build:BUILD_VERSION});
         }catch(e){
           console.error("feed load failed:",e);
-          return json({
-            ok:false,
-            posts:[],
-            error:"Feed load failed.",
-            build:BUILD_VERSION
-          },500);
+          return json({ok:false,posts:[],error:"Feed load failed.",build:BUILD_VERSION},500);
         }
       }
 
