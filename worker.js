@@ -128,66 +128,35 @@ export default {async fetch(request,env){
 
       if(url.pathname==="/api/posts"&&request.method==="GET"){
         try{
-          const info=await env.DB.prepare("PRAGMA table_info(posts)").all();
-          const names=new Set((info.results||[]).map(x=>x.name));
-          if(!names.has("id") || !names.has("user_id")){
-            return json({ok:false,error:"Posts table is missing id/user_id columns.",build:BUILD_VERSION},500);
-          }
-
-          const contentCol=names.has("content")?"content":
-            (names.has("text")?"text":
-            (names.has("body")?"body":
-            (names.has("ciphertext")?"ciphertext":null)));
-          if(!contentCol){
-            return json({ok:false,error:"Posts table has no content/text/body field.",build:BUILD_VERSION},500);
-          }
-
-          const timeCol=names.has("created_at")?"created_at":
-            (names.has("createdAt")?"createdAt":null);
-
-          const selectCols=[
-            "id",
-            "user_id",
-            contentCol+" AS content",
-            timeCol ? timeCol+" AS created_at" : "NULL AS created_at"
-          ];
-          const order=timeCol ? " ORDER BY "+timeCol+" DESC" : " ORDER BY rowid DESC";
-          const base=await env.DB.prepare(
-            "SELECT "+selectCols.join(", ")+" FROM posts"+order+" LIMIT 50"
+          // Feed read is intentionally simple and read-only.
+          // Existing posts must remain untouched; only read the columns
+          // confirmed to exist in the current posts table.
+          const r=await env.DB.prepare(
+            "SELECT p.id,p.user_id,p.content,p.created_at,"+
+            "COALESCE(u.username,'user') AS username,"+
+            "COALESCE(u.display_name,u.username,'User') AS display_name,"+
+            "COALESCE(u.avatar_url,'') AS avatar_url "+
+            "FROM posts p LEFT JOIN users u ON u.id=p.user_id "+
+            "ORDER BY p.created_at DESC LIMIT 50"
           ).all();
 
-          const posts=base.results||[];
-          for(const p of posts){
-            p.content=String(p.content||"");
-            p.username="user";
-            p.display_name="User";
-            p.avatar_url="";
-            try{
-              const u=await env.DB.prepare("SELECT username,display_name,avatar_url FROM users WHERE id=? LIMIT 1").bind(p.user_id).first();
-              if(u){
-                p.username=u.username||"user";
-                p.display_name=u.display_name||u.username||"User";
-                p.avatar_url=u.avatar_url||"";
-              }
-            }catch(_){}
-            try{
-              const l=await env.DB.prepare("SELECT COUNT(*) AS n FROM likes WHERE post_id=?").bind(p.id).first();
-              p.like_count=Number(l?.n||0);
-            }catch(_){p.like_count=0}
-            try{
-              const cm=await env.DB.prepare("SELECT COUNT(*) AS n FROM comments WHERE post_id=?").bind(p.id).first();
-              p.comment_count=Number(cm?.n||0);
-            }catch(_){p.comment_count=0}
-            try{
-              const me=url.searchParams.get("user_id")||"";
-              const liked=me?await env.DB.prepare("SELECT post_id FROM likes WHERE post_id=? AND user_id=? LIMIT 1").bind(p.id,me).first():null;
-              p.liked=liked?1:0;
-            }catch(_){p.liked=0}
-          }
+          const posts=(r.results||[]).map(p=>({
+            id:p.id,
+            user_id:p.user_id,
+            content:String(p.content||""),
+            created_at:p.created_at||"",
+            username:p.username||"user",
+            display_name:p.display_name||p.username||"User",
+            avatar_url:p.avatar_url||"",
+            like_count:0,
+            comment_count:0,
+            liked:0
+          }));
+
           return json({ok:true,posts,build:BUILD_VERSION});
         }catch(e){
           console.error("feed load failed:",e);
-          return json({ok:false,error:"Feed API failed: "+(e?.message||"unknown"),build:BUILD_VERSION},500);
+          return json({ok:false,error:"Feed API failed.",build:BUILD_VERSION},500);
         }
       }
 
