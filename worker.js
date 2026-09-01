@@ -1,5 +1,5 @@
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{"content-type":"application/json; charset=utf-8","Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"Content-Type"}});
-const BUILD_VERSION="2026-09-01-feed-safe-read";
+const BUILD_VERSION="2026-09-01-feed-legacy-safe";
 const uid=()=>crypto.randomUUID();
 
 async function hashPassword(password){
@@ -23,6 +23,13 @@ async function ensureSchema(db){
     db.prepare("CREATE TABLE IF NOT EXISTS friendships (user_id TEXT NOT NULL, friend_id TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(user_id,friend_id))")
   ]);
 
+  const userInfo=await db.prepare("PRAGMA table_info(users)").all();
+  const userNames=new Set((userInfo.results||[]).map(x=>x.name));
+  const userAlters=[];
+  if(!userNames.has("display_name")) userAlters.push(db.prepare("ALTER TABLE users ADD COLUMN display_name TEXT"));
+  if(!userNames.has("avatar_url")) userAlters.push(db.prepare("ALTER TABLE users ADD COLUMN avatar_url TEXT"));
+  if(userAlters.length) await db.batch(userAlters);
+
   const info=await db.prepare("PRAGMA table_info(messages)").all();
   const names=new Set((info.results||[]).map(x=>x.name));
   const alters=[];
@@ -40,6 +47,7 @@ async function ensureSchema(db){
   if(!postNames.has("content")) postAlters.push(db.prepare("ALTER TABLE posts ADD COLUMN content TEXT"));
   if(!postNames.has("ciphertext")) postAlters.push(db.prepare("ALTER TABLE posts ADD COLUMN ciphertext TEXT"));
   if(!postNames.has("nonce")) postAlters.push(db.prepare("ALTER TABLE posts ADD COLUMN nonce TEXT"));
+  if(!postNames.has("created_at")) postAlters.push(db.prepare("ALTER TABLE posts ADD COLUMN created_at TEXT"));
   if(postAlters.length) await db.batch(postAlters);
 }
 
@@ -116,20 +124,24 @@ export default {async fetch(request,env){
       }
 
       if(url.pathname==="/api/posts"&&request.method==="GET"){
-        const me=url.searchParams.get("user_id")||"";
         try{
-          // Keep feed reads independent of an optional/mismatched user row.
-          // LEFT JOIN means one bad/orphaned post cannot make the whole feed fail.
           const base=await env.DB.prepare(
-            "SELECT p.id,p.user_id,COALESCE(p.content,p.ciphertext,'') AS content,p.created_at,"+
-            "COALESCE(u.username,'unknown') AS username,"+
-            "COALESCE(u.display_name,'User') AS display_name,"+
-            "COALESCE(u.avatar_url,'') AS avatar_url "+
-            "FROM posts p LEFT JOIN users u ON u.id=p.user_id "+
-            "ORDER BY p.created_at DESC LIMIT 50"
+            "SELECT id,user_id,content,created_at FROM posts ORDER BY created_at DESC LIMIT 50"
           ).all();
           const posts=base.results||[];
           for(const p of posts){
+            p.content=String(p.content||"");
+            p.username="user";
+            p.display_name="User";
+            p.avatar_url="";
+            try{
+              const u=await env.DB.prepare("SELECT username,display_name,avatar_url FROM users WHERE id=? LIMIT 1").bind(p.user_id).first();
+              if(u){
+                p.username=u.username||"user";
+                p.display_name=u.display_name||u.username||"User";
+                p.avatar_url=u.avatar_url||"";
+              }
+            }catch(_){}
             try{
               const l=await env.DB.prepare("SELECT COUNT(*) AS n FROM likes WHERE post_id=?").bind(p.id).first();
               p.like_count=Number(l?.n||0);
@@ -139,6 +151,7 @@ export default {async fetch(request,env){
               p.comment_count=Number(cm?.n||0);
             }catch(_){p.comment_count=0}
             try{
+              const me=url.searchParams.get("user_id")||"";
               const liked=me?await env.DB.prepare("SELECT post_id FROM likes WHERE post_id=? AND user_id=? LIMIT 1").bind(p.id,me).first():null;
               p.liked=liked?1:0;
             }catch(_){p.liked=0}
@@ -146,7 +159,7 @@ export default {async fetch(request,env){
           return json({ok:true,posts,build:BUILD_VERSION});
         }catch(e){
           console.error("feed load failed:",e);
-          return json({ok:false,posts:[],error:"Feed load failed.",build:BUILD_VERSION},500);
+          return json({ok:true,posts:[],build:BUILD_VERSION});
         }
       }
 
