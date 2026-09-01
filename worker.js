@@ -136,45 +136,19 @@ export default {async fetch(request,env){
       }
 
       if(url.pathname==="/api/posts"&&request.method==="POST"){
-        const b=await request.json(),content=String(b.content||"").trim(),userId=String(b.user_id||"");
-        if(!userId||!content) return json({ok:false,error:"Post cannot be empty."},400);
-        if(content.length>2000) return json({ok:false,error:"Post is too long."},400);
+        const b=await request.json();
+        const content=String(b.content||"").trim(),userId=String(b.user_id||"");
+        if(!userId||!content)return json({ok:false,error:"Post cannot be empty."},400);
+        if(content.length>2000)return json({ok:false,error:"Post is too long."},400);
         const u=await env.DB.prepare("SELECT id FROM users WHERE id=?").bind(userId).first();
-        if(!u) return json({ok:false,error:"User not found."},404);
-        const info=await env.DB.prepare("PRAGMA table_info(posts)").all();
-        const schema=info.results||[];
-        const names=new Set(schema.map(x=>x.name));
-        const id=uid(),cols=[],vals=[];
-        const add=(name,value)=>{if(names.has(name)){cols.push(name);vals.push(value);}};
-        add("id",id);
-        add("user_id",userId);
-        if(names.has("content")) add("content",content);
-        else if(names.has("ciphertext")) add("ciphertext",content);
-        else if(names.has("text")) add("text",content);
-        for(const col of schema){
-          if(cols.includes(col.name)||!col.notnull||col.dflt_value!==null) continue;
-          const n=String(col.name).toLowerCase();
-          let v="";
-          if(n.includes("ciphertext")||n==="content"||n==="text"||n.includes("body")) v=content;
-          else if(n.includes("nonce")||n.includes("token")) v=uid();
-          else if(n==="user_id"||n.endsWith("_user_id")||n.includes("author")) v=userId;
-          else if(n.endsWith("_id")) v=uid();
-          else if(n.includes("device")) v="device:"+userId;
-          else if(n.includes("conversation")) v="";
-          else if(n.includes("created")||n.includes("updated")) v=new Date().toISOString();
-          else if(String(col.type||"").toUpperCase().includes("INT")) v=0;
-          else v="";
-          cols.push(col.name); vals.push(v);
-        }
-        if(!cols.includes("id")||!cols.includes("user_id")||(!cols.includes("content")&&!cols.includes("ciphertext")&&!cols.includes("text")))
-          return json({ok:false,error:"Posts table schema is incompatible.",schema},500);
-        const placeholders=cols.map(()=>"?").join(",");
+        if(!u)return json({ok:false,error:"User not found."},404);
+        const id=uid();
         try{
-          await env.DB.prepare("INSERT INTO posts("+cols.join(",")+") VALUES("+placeholders+")").bind(...vals).run();
-        }catch(insertError){
-          return json({ok:false,error:"Post insert failed: "+(insertError?.message||"unknown"),schema},500);
+          await env.DB.prepare("INSERT INTO posts(id,user_id,content) VALUES(?,?,?)").bind(id,userId,content).run();
+        }catch(e){
+          return json({ok:false,error:"Post insert failed: "+(e?.message||"unknown")},500);
         }
-        return json({ok:true,id},201);
+        return json({ok:true,id,message:"Post published successfully."},201);
       }
 
       const likeMatch=url.pathname.match(/^\/api\/posts\/([^/]+)\/like$/);
