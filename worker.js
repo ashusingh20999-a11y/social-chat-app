@@ -1,5 +1,5 @@
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{"content-type":"application/json; charset=utf-8","Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"Content-Type"}});
-const BUILD_VERSION="2026-09-01-feed-compat-fix";
+const BUILD_VERSION="2026-09-01-post-feed-schema-safe";
 const uid=()=>crypto.randomUUID();
 
 async function hashPassword(password){
@@ -118,37 +118,131 @@ export default {async fetch(request,env){
       if(url.pathname==="/api/posts"&&request.method==="GET"){
         const me=url.searchParams.get("user_id")||"";
         try{
-          const info=await env.DB.prepare("PRAGMA table_info(posts)").all();
-          const names=new Set((info.results||[]).map(x=>x.name));
-          const contentCol=names.has("content")?"p.content":(names.has("ciphertext")?"p.ciphertext":(names.has("text")?"p.text":"''"));
-          if(contentCol==="''") return json({posts:[],error:"Posts table has no content column.",build:BUILD_VERSION},500);
-          const base=await env.DB.prepare("SELECT p.id,p.user_id,"+contentCol+" AS content,p.created_at,u.username,u.display_name,u.avatar_url FROM posts p JOIN users u ON u.id=p.user_id ORDER BY p.created_at DESC LIMIT 50").all();
+          // Read the actual schema first so an older D1 users/posts table
+          // cannot break the entire feed because of one missing column.
+          const ps=await env.DB.prepare("PRAGMA table_info(posts)").all();
+          const us=await env.DB.prepare("PRAGMA table_info(users)").all();
+          const pn=new Set((ps.results||[]).map(x=>x.name));
+          const un=new Set((us.results||[]).map(x=>x.name));
+
+          const contentCol=pn.has("content")?"p.content":
+            (pn.has("text")?"p.text":
+            (pn.has("ciphertext")?"p.ciphertext":
+            (pn.has("body")?"p.body":"''")));
+          const dateCol=pn.has("created_at")?"p.created_at":
+            (pn.has("createdAt")?"p.createdAt":"CURRENT_TIMESTAMP");
+          const nameCol=un.has("display_name")?"u.display_name":
+            (un.has("name")?"u.name":"u.username");
+
+          if(contentCol==="''")
+            return json({ok:false,posts:[],error:"Posts table has no content column.",build:BUILD_VERSION},500);
+
+          const sql="SELECT p.id,p.user_id,"+contentCol+" AS content,"+dateCol+" AS created_at,"+
+            "u.username,"+nameCol+" AS display_name "+
+            "FROM posts p LEFT JOIN users u ON u.id=p.user_id "+
+            "ORDER BY "+dateCol+" DESC LIMIT 50";
+
+          const base=await env.DB.prepare(sql).all();
           const posts=base.results||[];
+
           for(const p of posts){
-            try{const l=await env.DB.prepare("SELECT COUNT(*) AS n FROM likes WHERE post_id=?").bind(p.id).first();p.like_count=Number(l?.n||0)}catch(_){p.like_count=0}
-            try{const cm=await env.DB.prepare("SELECT COUNT(*) AS n FROM comments WHERE post_id=?").bind(p.id).first();p.comment_count=Number(cm?.n||0)}catch(_){p.comment_count=0}
-            try{const liked=await env.DB.prepare("SELECT post_id FROM likes WHERE post_id=? AND user_id=? LIMIT 1").bind(p.id,me).first();p.liked=liked?1:0}catch(_){p.liked=0}
+            try{
+              const l=await env.DB.prepare("SELECT COUNT(*) AS n FROM likes WHERE post_id=?").bind(p.id).first();
+              p.like_count=Number(l?.n||0);
+            }catch(_){p.like_count=0}
+
+            try{
+              const cm=await env.DB.prepare("SELECT COUNT(*) AS n FROM comments WHERE post_id=?").bind(p.id).first();
+              p.comment_count=Number(cm?.n||0);
+            }catch(_){p.comment_count=0}
+
+            try{
+              const liked=me?await env.DB.prepare(
+                "SELECT post_id FROM likes WHERE post_id=? AND user_id=? LIMIT 1"
+              ).bind(p.id,me).first():null;
+              p.liked=liked?1:0;
+            }catch(_){p.liked=0}
+
+            p.display_name=p.display_name||p.username||"User";
+            p.username=p.username||"user";
           }
-          return json({ok:true,posts});
+
+          return json({ok:true,posts,build:BUILD_VERSION});
         }catch(e){
-          return json({ok:false,posts:[],error:"Feed load failed: "+(e?.message||"unknown"),build:BUILD_VERSION},500);
+          console.error("feed load failed:",e);
+          return json({
+            ok:false,
+            posts:[],
+            error:"Feed load failed.",
+            build:BUILD_VERSION
+          },500);
         }
       }
 
       if(url.pathname==="/api/posts"&&request.method==="POST"){
         const b=await request.json();
-        const content=String(b.content||"").trim(),userId=String(b.user_id||"");
-        if(!userId||!content)return json({ok:false,error:"Post cannot be empty."},400);
-        if(content.length>2000)return json({ok:false,error:"Post is too long."},400);
+        const content=String(b.content||"").trim();
+        const userId=String(b.user_id||"");
+
+        if(!userId||!content)
+          return json({ok:false,error:"Post cannot be empty."},400);
+        if(content.length>2000)
+          return json({ok:false,error:"Post is too long."},400);
+
         const u=await env.DB.prepare("SELECT id FROM users WHERE id=?").bind(userId).first();
-        if(!u)return json({ok:false,error:"User not found."},404);
-        const id=uid();
+        if(!u)
+          return json({ok:false,error:"User not found."},404);
+
         try{
-          await env.DB.prepare("INSERT INTO posts(id,user_id,content) VALUES(?,?,?)").bind(id,userId,content).run();
+          const ps=await env.DB.prepare("PRAGMA table_info(posts)").all();
+          const schema=ps.results||[];
+          const names=new Set(schema.map(x=>x.name));
+
+          // Support the current schema and older versions without changing
+          // or deleting existing data.
+          const contentField=names.has("content")?"content":
+            (names.has("text")?"text":
+            (names.has("ciphertext")?"ciphertext":
+            (names.has("body")?"body":null)));
+
+          if(!contentField)
+            return json({ok:false,error:"Posts table has no content field."},500);
+
+          const cols=[];
+          const vals=[];
+          const add=(c,v)=>{if(names.has(c)){cols.push(c);vals.push(v)}};
+
+          add("id",uid());
+          add("user_id",userId);
+          add(contentField,content);
+
+          // Fill only other required columns when the existing schema needs them.
+          for(const col of schema){
+            if(cols.includes(col.name)||!col.notnull||col.dflt_value!==null) continue;
+            const n=String(col.name).toLowerCase();
+            let v="";
+            if(n.includes("created")||n.includes("updated")) v=new Date().toISOString();
+            else if(n.includes("content")||n==="text"||n==="body"||n.includes("ciphertext")) v=content;
+            else if(n.endsWith("_id")||n==="id") v=uid();
+            else if(String(col.type||"").toUpperCase().includes("INT")) v=0;
+            cols.push(col.name);
+            vals.push(v);
+          }
+
+          const placeholders=cols.map(()=>"?").join(",");
+          const result=await env.DB.prepare(
+            "INSERT INTO posts("+cols.join(",")+") VALUES("+placeholders+")"
+          ).bind(...vals).run();
+
+          return json({
+            ok:true,
+            id:cols.includes("id")?vals[cols.indexOf("id")]:null,
+            message:"Post published successfully."
+          },201);
         }catch(e){
-          return json({ok:false,error:"Post insert failed: "+(e?.message||"unknown")},500);
+          console.error("post insert failed:",e);
+          return json({ok:false,error:"Post insert failed."},500);
         }
-        return json({ok:true,id,message:"Post published successfully."},201);
       }
 
       const likeMatch=url.pathname.match(/^\/api\/posts\/([^/]+)\/like$/);
