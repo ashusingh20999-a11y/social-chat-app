@@ -1,5 +1,5 @@
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{"content-type":"application/json; charset=utf-8","Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"Content-Type"}});
-const BUILD_VERSION="2026-09-01-post-syntax-fixed";
+const BUILD_VERSION="2026-09-01-feed-ok-fix";
 const uid=()=>crypto.randomUUID();
 
 async function hashPassword(password){
@@ -129,7 +129,7 @@ export default {async fetch(request,env){
             try{const cm=await env.DB.prepare("SELECT COUNT(*) AS n FROM comments WHERE post_id=?").bind(p.id).first();p.comment_count=Number(cm?.n||0)}catch(_){p.comment_count=0}
             try{const liked=await env.DB.prepare("SELECT post_id FROM likes WHERE post_id=? AND user_id=? LIMIT 1").bind(p.id,me).first();p.liked=liked?1:0}catch(_){p.liked=0}
           }
-          return json({posts});
+          return json({ok:true,posts});
         }catch(e){
           return json({ok:false,posts:[],error:"Feed load failed: "+(e?.message||"unknown"),build:BUILD_VERSION},500);
         }
