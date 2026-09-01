@@ -1,5 +1,5 @@
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{"content-type":"application/json; charset=utf-8","Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"Content-Type"}});
-const BUILD_VERSION="2026-09-01-feed-legacy-safe";
+const BUILD_VERSION="2026-09-01-feed-direct-read";
 const uid=()=>crypto.randomUUID();
 
 async function hashPassword(password){
@@ -128,35 +128,32 @@ export default {async fetch(request,env){
 
       if(url.pathname==="/api/posts"&&request.method==="GET"){
         try{
-          // Feed read is intentionally simple and read-only.
-          // Existing posts must remain untouched; only read the columns
-          // confirmed to exist in the current posts table.
+          // Keep the feed read path independent of the users/likes/comments
+          // tables. Existing posts are already being stored in D1.
           const r=await env.DB.prepare(
-            "SELECT p.id,p.user_id,p.content,p.created_at,"+
-            "COALESCE(u.username,'user') AS username,"+
-            "COALESCE(u.display_name,u.username,'User') AS display_name,"+
-            "COALESCE(u.avatar_url,'') AS avatar_url "+
-            "FROM posts p LEFT JOIN users u ON u.id=p.user_id "+
-            "ORDER BY p.created_at DESC LIMIT 50"
+            "SELECT id,user_id,content,created_at FROM posts ORDER BY created_at DESC LIMIT 50"
           ).all();
 
-          const posts=(r.results||[]).map(p=>({
-            id:p.id,
-            user_id:p.user_id,
-            content:String(p.content||""),
-            created_at:p.created_at||"",
-            username:p.username||"user",
-            display_name:p.display_name||p.username||"User",
-            avatar_url:p.avatar_url||"",
-            like_count:0,
-            comment_count:0,
-            liked:0
-          }));
-
-          return json({ok:true,posts,build:BUILD_VERSION});
+          const posts=r.results||[];
+          return json({
+            ok:true,
+            posts:posts.map(p=>({
+              id:p.id,
+              user_id:p.user_id,
+              content:String(p.content||""),
+              created_at:p.created_at||"",
+              username:"user",
+              display_name:"User",
+              avatar_url:"",
+              like_count:0,
+              comment_count:0,
+              liked:0
+            })),
+            build:BUILD_VERSION
+          });
         }catch(e){
           console.error("feed load failed:",e);
-          return json({ok:false,error:"Feed API failed.",build:BUILD_VERSION},500);
+          return json({ok:false,error:"Feed read failed: "+String(e?.message||e),build:BUILD_VERSION},500);
         }
       }
 
