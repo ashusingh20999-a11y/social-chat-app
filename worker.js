@@ -117,12 +117,22 @@ export default {async fetch(request,env){
 
       if(url.pathname==="/api/posts"&&request.method==="GET"){
         const me=url.searchParams.get("user_id")||"";
-        const info=await env.DB.prepare("PRAGMA table_info(posts)").all();
-        const names=new Set((info.results||[]).map(x=>x.name));
-        const contentCol=names.has("content")?"p.content":(names.has("ciphertext")?"p.ciphertext":(names.has("text")?"p.text":"''"));
-        if(contentCol==="''") return json({posts:[],error:"Posts table has no content column."},500);
-        const r=await env.DB.prepare("SELECT p.id,p.user_id,"+contentCol+" AS content,p.created_at,u.username,u.display_name,u.avatar_url,(SELECT COUNT(*) FROM likes l WHERE l.post_id=p.id) like_count,(SELECT COUNT(*) FROM comments c WHERE c.post_id=p.id) comment_count,(SELECT COUNT(*) FROM likes l2 WHERE l2.post_id=p.id AND l2.user_id=?) liked FROM posts p JOIN users u ON u.id=p.user_id ORDER BY p.created_at DESC LIMIT 50").bind(me).all();
-        return json({posts:r.results||[]});
+        try{
+          const info=await env.DB.prepare("PRAGMA table_info(posts)").all();
+          const names=new Set((info.results||[]).map(x=>x.name));
+          const contentCol=names.has("content")?"p.content":(names.has("ciphertext")?"p.ciphertext":(names.has("text")?"p.text":"''"));
+          if(contentCol==="''") return json({posts:[],error:"Posts table has no content column.",build:BUILD_VERSION},500);
+          const base=await env.DB.prepare("SELECT p.id,p.user_id,"+contentCol+" AS content,p.created_at,u.username,u.display_name,u.avatar_url FROM posts p JOIN users u ON u.id=p.user_id ORDER BY p.created_at DESC LIMIT 50").all();
+          const posts=base.results||[];
+          for(const p of posts){
+            try{const l=await env.DB.prepare("SELECT COUNT(*) AS n FROM likes WHERE post_id=?").bind(p.id).first();p.like_count=Number(l?.n||0)}catch(_){p.like_count=0}
+            try{const cm=await env.DB.prepare("SELECT COUNT(*) AS n FROM comments WHERE post_id=?").bind(p.id).first();p.comment_count=Number(cm?.n||0)}catch(_){p.comment_count=0}
+            try{const liked=await env.DB.prepare("SELECT post_id FROM likes WHERE post_id=? AND user_id=? LIMIT 1").bind(p.id,me).first();p.liked=liked?1:0}catch(_){p.liked=0}
+          }
+          return json({posts});
+        }catch(e){
+          return json({ok:false,posts:[],error:"Feed load failed: "+(e?.message||"unknown"),build:BUILD_VERSION},500);
+        }
       }
 
       if(url.pathname==="/api/posts"&&request.method==="POST"){
