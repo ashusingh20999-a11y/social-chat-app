@@ -158,71 +158,66 @@ export default {async fetch(request,env){
       }
 
       if(url.pathname==="/api/posts"&&request.method==="POST"){
-        const b=await request.json();
-        const content=String(b.content||"").trim();
-        const userId=String(b.user_id||"");
-
-        if(!userId||!content)
-          return json({ok:false,error:"Post cannot be empty."},400);
-        if(content.length>2000)
-          return json({ok:false,error:"Post is too long."},400);
-
-        const u=await env.DB.prepare("SELECT id FROM users WHERE id=?").bind(userId).first();
-        if(!u)
-          return json({ok:false,error:"User not found."},404);
-
         try{
+          const body=await request.json();
+          const content=String(body?.content||"").trim();
+          const userId=String(body?.user_id||"").trim();
+
+          if(!userId)return json({ok:false,error:"Please log in again."},401);
+          if(!content)return json({ok:false,error:"Post cannot be empty."},400);
+          if(content.length>2000)return json({ok:false,error:"Post is too long."},400);
+
+          const user=await env.DB.prepare("SELECT id FROM users WHERE id=?").bind(userId).first();
+          if(!user)return json({ok:false,error:"User not found."},404);
+
+          const id=crypto.randomUUID();
+          const createdAt=new Date().toISOString();
+
           const ps=await env.DB.prepare("PRAGMA table_info(posts)").all();
           const schema=ps.results||[];
           const names=new Set(schema.map(x=>x.name));
 
-          // Support the current schema and older versions without changing
-          // or deleting existing data.
           const contentField=names.has("content")?"content":
-            (names.has("text")?"text":
-            (names.has("ciphertext")?"ciphertext":
-            (names.has("body")?"body":null)));
+            names.has("text")?"text":
+            names.has("body")?"body":
+            names.has("ciphertext")?"ciphertext":null;
 
-          if(!contentField)
+          if(!contentField){
             return json({ok:false,error:"Posts table has no content field."},500);
-
-          const cols=[];
-          const vals=[];
-          const add=(c,v)=>{if(names.has(c)){cols.push(c);vals.push(v)}};
-
-          add("id",uid());
-          add("user_id",userId);
-          add(contentField,content);
-
-          // Fill only other required columns when the existing schema needs them.
-          for(const col of schema){
-            if(cols.includes(col.name)||!col.notnull||col.dflt_value!==null) continue;
-            const n=String(col.name).toLowerCase();
-            let v="";
-            if(n.includes("created")||n.includes("updated")) v=new Date().toISOString();
-            else if(n.includes("content")||n==="text"||n==="body"||n.includes("ciphertext")) v=content;
-            else if(n.endsWith("_id")||n==="id") v=uid();
-            else if(String(col.type||"").toUpperCase().includes("INT")) v=0;
-            cols.push(col.name);
-            vals.push(v);
           }
 
-          const placeholders=cols.map(()=>"?").join(",");
-          const result=await env.DB.prepare(
-            "INSERT INTO posts("+cols.join(",")+") VALUES("+placeholders+")"
-          ).bind(...vals).run();
+          const columns=["user_id",contentField];
+          const values=[userId,content];
+
+          if(names.has("id")){
+            columns.unshift("id");
+            values.unshift(id);
+          }
+          if(names.has("created_at")){
+            columns.push("created_at");
+            values.push(createdAt);
+          }else if(names.has("createdAt")){
+            columns.push("createdAt");
+            values.push(createdAt);
+          }
+
+          const placeholders=columns.map(()=>"?").join(",");
+          await env.DB.prepare(
+            "INSERT INTO posts ("+columns.join(",")+") VALUES ("+placeholders+")"
+          ).bind(...values).run();
 
           return json({
             ok:true,
-            id:cols.includes("id")?vals[cols.indexOf("id")]:null,
+            id:id,
             message:"Post published successfully."
           },201);
         }catch(e){
-          console.error("post insert failed:",e);
+          console.error("POST /api/posts failed:",e);
           return json({ok:false,error:"Post insert failed."},500);
         }
       }
 
+      
       const likeMatch=url.pathname.match(/^\/api\/posts\/([^/]+)\/like$/);
       if(likeMatch&&request.method==="POST"){
         const postId=likeMatch[1],b=await request.json(),userId=String(b.user_id||"");
