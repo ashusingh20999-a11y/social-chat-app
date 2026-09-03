@@ -1,5 +1,5 @@
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{"content-type":"application/json; charset=utf-8","Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"Content-Type"}});
-const BUILD_VERSION="2026-09-02-feed-restored-final";
+const BUILD_VERSION="2026-09-03-feed-final-8";
 const uid=()=>crypto.randomUUID();
 
 async function hashPassword(password){
@@ -127,37 +127,55 @@ export default {async fetch(request,env){
       }
 
       if(url.pathname==="/api/feed"&&request.method==="GET"){
-        try{
-          const userId=String(url.searchParams.get("user_id")||"").trim();
-          if(!userId)return json({ok:false,error:"user_id is required."},400);
+  try{
+    const userId=String(url.searchParams.get("user_id")||"").trim();
+    if(!userId)return json({ok:false,error:"user_id is required."},400);
 
-          const r=await env.DB.prepare(`
-            SELECT
-              p.id,p.user_id,p.content,p.created_at,
-              COALESCE(u.username,'user') AS username,
-              COALESCE(u.display_name,'User') AS display_name,
-              COALESCE(u.avatar_url,'') AS avatar_url,
-              (SELECT COUNT(*) FROM likes l WHERE l.post_id=p.id) AS like_count,
-              (SELECT COUNT(*) FROM comments c WHERE c.post_id=p.id) AS comment_count,
-              EXISTS(SELECT 1 FROM likes ml WHERE ml.post_id=p.id AND ml.user_id=?) AS liked
-            FROM posts p
-            JOIN users u ON u.id=p.user_id
-            WHERE p.user_id=?
-               OR p.user_id IN (
-                 SELECT friend_id FROM friendships WHERE user_id=?
-               )
-            ORDER BY p.created_at DESC
-            LIMIT 50
-          `).bind(userId,userId,userId).all();
+    const r=await env.DB.prepare(`
+      SELECT
+        p.id,p.user_id,p.content,p.created_at,
+        COALESCE(u.username,'user') AS username,
+        COALESCE(u.display_name,'User') AS display_name,
+        COALESCE(u.avatar_url,'') AS avatar_url
+      FROM posts p
+      LEFT JOIN users u ON u.id=p.user_id
+      WHERE p.user_id=?
+         OR EXISTS(
+           SELECT 1 FROM friendships f
+           WHERE (f.user_id=? AND f.friend_id=p.user_id)
+              OR (f.friend_id=? AND f.user_id=p.user_id)
+         )
+      ORDER BY p.created_at DESC
+      LIMIT 50
+    `).bind(userId,userId,userId).all();
 
-          return json({ok:true,posts:r.results||[],build:BUILD_VERSION});
-        }catch(e){
-          console.error("feed load failed:",e);
-          return json({ok:false,error:"Feed read failed: "+String(e?.message||e),build:BUILD_VERSION},500);
-        }
-      }
+    return json({
+      ok:true,
+      posts:(r.results||[]).map(p=>({
+        id:p.id,
+        user_id:p.user_id,
+        content:String(p.content||""),
+        created_at:p.created_at||"",
+        username:p.username||"user",
+        display_name:p.display_name||"User",
+        avatar_url:p.avatar_url||"",
+        like_count:0,
+        comment_count:0,
+        liked:0
+      })),
+      build:BUILD_VERSION
+    });
+  }catch(e){
+    console.error("feed load failed:",e);
+    return json({
+      ok:false,
+      error:"Feed read failed: "+String(e?.message||e),
+      build:BUILD_VERSION
+    },500);
+  }
+}
 
-      if(url.pathname==="/api/posts"&&request.method==="GET"){
+if(url.pathname==="/api/posts"&&request.method==="GET"){
         try{
           const r=await env.DB.prepare(
             "SELECT p.id,p.user_id,p.content,p.created_at,COALESCE(u.username,'user') AS username,COALESCE(u.display_name,'User') AS display_name,COALESCE(u.avatar_url,'') AS avatar_url,(SELECT COUNT(*) FROM likes l WHERE l.post_id=p.id) AS like_count,(SELECT COUNT(*) FROM comments c WHERE c.post_id=p.id) AS comment_count FROM posts p LEFT JOIN users u ON u.id=p.user_id ORDER BY p.created_at DESC LIMIT 50"
