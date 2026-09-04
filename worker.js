@@ -1,77 +1,54 @@
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{"content-type":"application/json; charset=utf-8","Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"Content-Type"}});
-const BUILD_VERSION="2026-09-04-feed-final-11";
+const BUILD_VERSION="2026-09-04-login-home-fix-12";
 const uid=()=>crypto.randomUUID();
-
 async function hashPassword(password){const data=new TextEncoder().encode(password);const digest=await crypto.subtle.digest("SHA-256",data);return [...new Uint8Array(digest)].map(b=>b.toString(16).padStart(2,"0")).join("");}
 function normalizeUsername(v){return v.trim().replace(/^@/,"").toLowerCase()}
-
-async function ensureSchema(db){
-  await db.batch([
-    db.prepare("CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, display_name TEXT, avatar_url TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"),
-    db.prepare("CREATE TABLE IF NOT EXISTS posts (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(user_id) REFERENCES users(id))"),
-    db.prepare("CREATE TABLE IF NOT EXISTS likes (post_id TEXT NOT NULL, user_id TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(post_id,user_id))"),
-    db.prepare("CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, post_id TEXT NOT NULL, user_id TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"),
-    db.prepare("CREATE TABLE IF NOT EXISTS devices (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, identity_key TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"),
-    db.prepare("CREATE TABLE IF NOT EXISTS conversations (id TEXT PRIMARY KEY, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"),
-    db.prepare("CREATE TABLE IF NOT EXISTS conversation_members (conversation_id TEXT NOT NULL, device_id TEXT NOT NULL, PRIMARY KEY(conversation_id,device_id))"),
-    db.prepare("CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL DEFAULT '', sender_id TEXT NOT NULL, receiver_id TEXT NOT NULL, sender_device_id TEXT NOT NULL DEFAULT '', receiver_device_id TEXT NOT NULL DEFAULT '', content TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"),
-    db.prepare("CREATE TABLE IF NOT EXISTS friend_requests (id TEXT PRIMARY KEY, sender_id TEXT NOT NULL, receiver_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(sender_id,receiver_id))"),
-    db.prepare("CREATE TABLE IF NOT EXISTS friendships (user_id TEXT NOT NULL, friend_id TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(user_id,friend_id))")
-  ]);
-}
-
+async function ensureSchema(db){await db.batch([
+ db.prepare("CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, display_name TEXT, avatar_url TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"),
+ db.prepare("CREATE TABLE IF NOT EXISTS posts (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(user_id) REFERENCES users(id))"),
+ db.prepare("CREATE TABLE IF NOT EXISTS likes (post_id TEXT NOT NULL, user_id TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(post_id,user_id))"),
+ db.prepare("CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, post_id TEXT NOT NULL, user_id TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"),
+ db.prepare("CREATE TABLE IF NOT EXISTS friendships (user_id TEXT NOT NULL, friend_id TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(user_id,friend_id))")
+]);}
 export default {async fetch(request,env){
-  const url=new URL(request.url);
-  if(url.pathname.startsWith("/api/")){
-    if(request.method==="OPTIONS")return json({});
-    try{
-      try{await ensureSchema(env.DB)}catch(e){console.error("schema maintenance failed:",e)}
-      if(url.pathname==="/api/health")return json({ok:true,database:"connected",build:BUILD_VERSION});
-      if(url.pathname==="/api/signup"&&request.method==="POST"){
-        const b=await request.json();
-        const username=normalizeUsername(String(b.username||"")),email=String(b.email||"").trim().toLowerCase(),password=String(b.password||"");
-        if(!username||!email||!password)return json({ok:false,error:"Username, email and password are required."},400);
-        const exists=await env.DB.prepare("SELECT id FROM users WHERE username=? OR email=?").bind(username,email).first();
-        if(exists)return json({ok:false,error:"Username or email already exists."},409);
-        const id=uid();
-        await env.DB.prepare("INSERT INTO users(id,username,email,password_hash,display_name,created_at) VALUES(?,?,?,?,?,?)").bind(id,username,email,await hashPassword(password),username,new Date().toISOString()).run();
-        return json({ok:true,user:{id,username,email,display_name:username},build:BUILD_VERSION},201);
-      }
-      if(url.pathname==="/api/login"&&request.method==="POST"){
-        const b=await request.json();
-        const login=String(b.username||b.email||"").trim().toLowerCase(),password=String(b.password||"");
-        if(!login||!password)return json({ok:false,error:"Username/email and password are required."},400);
-        const user=await env.DB.prepare("SELECT id,username,email,password_hash,display_name,avatar_url FROM users WHERE lower(username)=? OR lower(email)=?").bind(login,login).first();
-        if(!user||user.password_hash!==await hashPassword(password))return json({ok:false,error:"Invalid login."},401);
-        return json({ok:true,user:{id:user.id,username:user.username,email:user.email,display_name:user.display_name||user.username,avatar_url:user.avatar_url||""},build:BUILD_VERSION});
-      }
-      if(url.pathname==="/api/feed"&&request.method==="GET"){
-        const userId=String(url.searchParams.get("user_id")||"").trim();
-        if(!userId)return json({ok:false,error:"user_id is required."},400);
-        const result=await env.DB.prepare("SELECT p.id,p.user_id,p.content,p.created_at,COALESCE(u.username,'user') AS username,COALESCE(u.display_name,'User') AS display_name,COALESCE(u.avatar_url,'') AS avatar_url FROM posts p LEFT JOIN users u ON u.id=p.user_id WHERE p.user_id=? OR EXISTS(SELECT 1 FROM friendships f WHERE (f.user_id=? AND f.friend_id=p.user_id) OR (f.friend_id=? AND f.user_id=p.user_id)) ORDER BY p.created_at DESC LIMIT 50").bind(userId,userId,userId).all();
-        return json({ok:true,posts:result.results||[],build:BUILD_VERSION});
-      }
-      if(url.pathname==="/api/posts"&&request.method==="GET"){
-        const result=await env.DB.prepare("SELECT p.id,p.user_id,p.content,p.created_at,COALESCE(u.username,'user') AS username,COALESCE(u.display_name,'User') AS display_name,COALESCE(u.avatar_url,'') AS avatar_url FROM posts p LEFT JOIN users u ON u.id=p.user_id ORDER BY p.created_at DESC LIMIT 50").all();
-        return json({ok:true,posts:result.results||[],build:BUILD_VERSION});
-      }
-      if(url.pathname==="/api/posts"&&request.method==="POST"){
-        const b=await request.json();
-        const userId=String(b.user_id||"").trim(),content=String(b.content||"").trim();
-        if(!userId)return json({ok:false,error:"user_id is required."},400);
-        if(!content)return json({ok:false,error:"Post content cannot be empty."},400);
-        if(content.length>2000)return json({ok:false,error:"Post is too long."},400);
-        const user=await env.DB.prepare("SELECT id FROM users WHERE id=?").bind(userId).first();
-        if(!user)return json({ok:false,error:"User not found."},404);
-        const id=uid(),createdAt=new Date().toISOString();
-        await env.DB.prepare("INSERT INTO posts(id,user_id,content,created_at) VALUES(?,?,?,?)").bind(id,userId,content,createdAt).run();
-        return json({ok:true,post:{id,user_id:userId,content,created_at:createdAt},build:BUILD_VERSION},201);
-      }
-      return json({ok:false,error:"API endpoint not found."},404);
-    }catch(e){
-      console.error("API error:",e);
-      return json({ok:false,error:String(e?.message||e||"Server error"),build:BUILD_VERSION},500);
-    }
-  }
-  return new Response("Social Chat API is running. Build "+BUILD_VERSION,{headers:{"content-type":"text/plain; charset=utf-8"}});
+ const url=new URL(request.url);
+ if(url.pathname.startsWith("/api/")){
+  if(request.method==="OPTIONS")return json({});
+  try{
+   try{await ensureSchema(env.DB)}catch(e){console.error("schema maintenance failed:",e)}
+   if(url.pathname==="/api/health")return json({ok:true,database:"connected",build:BUILD_VERSION});
+   if(url.pathname==="/api/signup"&&request.method==="POST"){
+    const b=await request.json();const name=String(b.name||b.display_name||b.username||"").trim();const username=normalizeUsername(String(b.username||""));const email=String(b.email||"").trim().toLowerCase();const password=String(b.password||"");
+    if(username.length<3||!email||password.length<8)return json({ok:false,error:"Please enter a valid username, email and password (8+ characters)."},400);
+    const exists=await env.DB.prepare("SELECT id FROM users WHERE lower(username)=? OR lower(email)=?").bind(username,email).first();if(exists)return json({ok:false,error:"Username or email already exists."},409);
+    const id=uid();await env.DB.prepare("INSERT INTO users(id,username,email,password_hash,display_name,created_at) VALUES(?,?,?,?,?,?)").bind(id,username,email,await hashPassword(password),name||username,new Date().toISOString()).run();
+    return json({ok:true,user:{id,username,email,display_name:name||username,avatar_url:""},build:BUILD_VERSION},201);
+   }
+   if(url.pathname==="/api/login"&&request.method==="POST"){
+    const b=await request.json();const identity=String(b.identity||b.username||b.email||"").trim().toLowerCase();const password=String(b.password||"");
+    if(!identity||!password)return json({ok:false,error:"Username/email and password are required."},400);
+    const user=await env.DB.prepare("SELECT id,username,email,password_hash,display_name,avatar_url FROM users WHERE lower(username)=? OR lower(email)=? LIMIT 1").bind(normalizeUsername(identity),identity).first();
+    if(!user||user.password_hash!==await hashPassword(password))return json({ok:false,error:"Invalid login details."},401);
+    return json({ok:true,user:{id:user.id,username:user.username,email:user.email,display_name:user.display_name||user.username,avatar_url:user.avatar_url||""},build:BUILD_VERSION});
+   }
+   if(url.pathname==="/api/posts"&&request.method==="GET"){
+    const r=await env.DB.prepare("SELECT p.id,p.user_id,p.content,p.created_at,COALESCE(u.username,'user') AS username,COALESCE(u.display_name,'User') AS display_name,COALESCE(u.avatar_url,'') AS avatar_url FROM posts p LEFT JOIN users u ON u.id=p.user_id ORDER BY p.created_at DESC LIMIT 50").all();return json({ok:true,posts:r.results||[],build:BUILD_VERSION});
+   }
+   if(url.pathname==="/api/feed"&&request.method==="GET"){
+    const userId=String(url.searchParams.get("user_id")||"").trim();if(!userId)return json({ok:false,error:"user_id is required."},400);
+    const r=await env.DB.prepare("SELECT p.id,p.user_id,p.content,p.created_at,COALESCE(u.username,'user') AS username,COALESCE(u.display_name,'User') AS display_name,COALESCE(u.avatar_url,'') AS avatar_url FROM posts p LEFT JOIN users u ON u.id=p.user_id WHERE p.user_id=? OR EXISTS(SELECT 1 FROM friendships f WHERE (f.user_id=? AND f.friend_id=p.user_id) OR (f.friend_id=? AND f.user_id=p.user_id)) ORDER BY p.created_at DESC LIMIT 50").bind(userId,userId,userId).all();return json({ok:true,posts:r.results||[],build:BUILD_VERSION});
+   }
+   if(url.pathname==="/api/posts"&&request.method==="POST"){
+    const b=await request.json();const userId=String(b.user_id||"").trim();const content=String(b.content||"").trim();if(!userId)return json({ok:false,error:"Please log in again."},401);if(!content)return json({ok:false,error:"Post cannot be empty."},400);if(content.length>2000)return json({ok:false,error:"Post is too long."},400);const user=await env.DB.prepare("SELECT id FROM users WHERE id=?").bind(userId).first();if(!user)return json({ok:false,error:"User not found."},404);const id=uid(),createdAt=new Date().toISOString();await env.DB.prepare("INSERT INTO posts(id,user_id,content,created_at) VALUES(?,?,?,?)").bind(id,userId,content,createdAt).run();return json({ok:true,post:{id,user_id:userId,content,created_at:createdAt},build:BUILD_VERSION},201);
+   }
+   return json({ok:false,error:"API endpoint not found."},404);
+  }catch(e){console.error("API error:",e);return json({ok:false,error:String(e?.message||e||"Server error"),build:BUILD_VERSION},500)}
+ }
+ return new Response(FRONTEND_HTML,{headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store"}});
 }};
+
+const FRONTEND_HTML=`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#6d5dfc"><title>Social Chat</title><style>
+*{box-sizing:border-box}body{margin:0;background:#f5f6fb;color:#182033;font-family:system-ui,-apple-system,Segoe UI,sans-serif}.shell{max-width:520px;margin:auto;min-height:100vh}.auth{min-height:100vh;display:flex;align-items:center;padding:22px}.card{background:#fff;border:1px solid #e6e8ef;border-radius:20px;padding:18px;margin:12px 0}.authcard{width:100%;padding:28px;border-radius:28px;box-shadow:0 15px 45px #20204014}h1{margin:0 0 7px}.muted{color:#7b8498;font-size:14px}.field{display:block;width:100%;border:1px solid #e1e4ec;background:#fafbfe;border-radius:13px;padding:13px 14px;margin:8px 0;outline:0}.field:focus{border-color:#6d5dfc}.primary{width:100%;border:0;border-radius:13px;padding:13px;background:#6d5dfc;color:#fff;font-weight:700;margin-top:8px}.link{border:0;background:none;color:#6d5dfc;font-weight:700}.err{color:#c62828;min-height:20px;font-size:13px}.app{display:none;padding-bottom:75px}.top{padding:20px 18px 10px;font-size:22px;font-weight:800}.page{padding:8px 14px}.profile{display:flex;align-items:center;gap:12px;background:#6d5dfc;color:#fff;border-radius:20px;padding:17px}.avatar{width:46px;height:46px;border-radius:50%;background:#fff;color:#6d5dfc;display:grid;place-items:center;font-weight:800}.composer textarea{width:100%;min-height:85px;border:0;outline:0;resize:none;font:inherit}.row{display:flex;justify-content:flex-end}.small{border:0;border-radius:11px;padding:10px 16px;background:#6d5dfc;color:#fff;font-weight:700}.post{background:#fff;border:1px solid #e6e8ef;border-radius:18px;padding:15px;margin:10px 0}.postname{font-weight:700}.postcontent{white-space:pre-wrap;line-height:1.5;margin-top:10px}.empty{text-align:center;padding:28px;color:#7b8498}.bottom{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:min(520px,100%);height:65px;background:#fff;border-top:1px solid #e6e8ef;display:flex;justify-content:space-around}.nav{flex:1;border:0;background:none;color:#7b8498}.nav.active{color:#6d5dfc;font-weight:700}</style></head><body><div class="shell">
+<section id="auth" class="auth"><div class="card authcard"><h1>Social Chat</h1><p class="muted">Connect, share and chat with your friends.</p><div id="loginPane"><input id="li" class="field" placeholder="Username or email" autocomplete="username"><input id="lp" class="field" type="password" placeholder="Password" autocomplete="current-password"><button class="primary" onclick="login()">Log in</button><p id="le" class="err"></p><p class="muted">New here? <button class="link" onclick="toggle(true)">Create account</button></p></div><div id="signupPane" style="display:none"><input id="sn" class="field" placeholder="Full name"><input id="su" class="field" placeholder="Username" autocomplete="username"><input id="se" class="field" type="email" placeholder="Email" autocomplete="email"><input id="sp" class="field" type="password" placeholder="Password (8+ characters)" autocomplete="new-password"><button class="primary" onclick="signup()">Create account</button><p id="se2" class="err"></p><p class="muted">Already have an account? <button class="link" onclick="toggle(false)">Log in</button></p></div></div></section>
+<section id="app" class="app"><header class="top">Social Chat</header><main class="page"><div class="profile"><div id="avatar" class="avatar"></div><div><b id="name"></b><div id="handle"></div></div></div><div class="card composer"><textarea id="postText" maxlength="2000" placeholder="What's on your mind?"></textarea><div class="row"><button class="small" onclick="createPost()">Post</button></div></div><div id="feed"></div></main><nav class="bottom"><button class="nav active">⌂<br>Home</button><button class="nav" onclick="logout()">↪<br>Log out</button></nav></section></div>
+<script>let me=null;const $=id=>document.getElementById(id);function toggle(s){$('loginPane').style.display=s?'none':'block';$('signupPane').style.display=s?'block':'none';$('le').textContent='';$('se2').textContent=''}async function api(u,o){try{const r=await fetch(u,o);const t=await r.text();let d;try{d=JSON.parse(t)}catch(e){d={ok:false,error:'HTTP '+r.status}}return d}catch(e){return{ok:false,error:'Network error: '+e.message}}}function initials(s){return String(s||'?').split(/\\s+/).map(x=>x[0]).slice(0,2).join('').toUpperCase()}function enter(){localStorage.setItem('social_user',JSON.stringify(me));$('auth').style.display='none';$('app').style.display='block';$('name').textContent=me.display_name||me.username;$('handle').textContent='@'+me.username;$('avatar').textContent=initials(me.display_name||me.username);loadPosts()}async function login(){const identity=$('li').value.trim(),password=$('lp').value;const d=await api('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:identity,password:password})});if(!d.ok){$('le').textContent=d.error||'Login failed';return}me=d.user;enter()}async function signup(){const d=await api('/api/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:$('sn').value,username:$('su').value,email:$('se').value,password:$('sp').value})});if(!d.ok){$('se2').textContent=d.error||'Signup failed';return}me=d.user;enter()}async function loadPosts(){const f=$('feed');f.innerHTML='<div class="empty">Loading feed...</div>';const d=await api('/api/posts?_t='+Date.now(),{cache:'no-store'});if(!d.ok){f.innerHTML='<div class="empty">Unable to load feed<br>'+String(d.error||'Unknown error')+'</div>';return}const posts=Array.isArray(d.posts)?d.posts:[];if(!posts.length){f.innerHTML='<div class="empty">No posts yet.</div>';return}f.innerHTML=posts.map(p=>'<article class="post"><div class="postname">'+esc(p.display_name||p.username||'User')+'</div><div class="postcontent">'+esc(p.content)+'</div></article>').join('')}async function createPost(){const content=$('postText').value.trim();if(!content)return;const d=await api('/api/posts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:me.id,content})});if(!d.ok){alert(d.error||'Post failed');return}$('postText').value='';loadPosts()}function esc(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}function logout(){me=null;localStorage.removeItem('social_user');$('app').style.display='none';$('auth').style.display='flex';toggle(false)}(()=>{try{const x=JSON.parse(localStorage.getItem('social_user')||'null');if(x&&x.id){me=x;enter()}}catch(e){}})();</script></body></html>`;
