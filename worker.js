@@ -1,14 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 
-export interface Env {
-  DB: D1Database;
-  CHAT_ROOM: DurableObjectNamespace;
-  RESEND_API_KEY?: string;
-  FROM_EMAIL?: string;
-}
-
 export class ChatRoom extends DurableObject {
-  async fetch(request: Request) {
+  async fetch(request) {
     if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") return new Response("Expected WebSocket", { status: 426 });
     const url = new URL(request.url);
     const username = (url.searchParams.get("username") || "Anonymous").slice(0, 40);
@@ -71,32 +64,40 @@ async function sendOtp(env, email, otp) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.pathname === "/home.html") {
+      if (!env.DB) return new Response("D1 binding DB is missing", { status: 500 });
+      await initDatabase(env.DB);
+      const u = await sessionUser(request, env.DB);
+      if (!u) return Response.redirect(new URL("/", request.url), 302);
+      return env.ASSETS.fetch(request);
+    }
     if (url.pathname.startsWith("/chat/")) {
+      if (!env.DB) return new Response("D1 binding DB is missing", { status: 500 });
+      const u = await sessionUser(request, env.DB);
+      if (!u) return new Response("Login required", { status: 401 });
       if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") return new Response("Expected WebSocket", { status: 426 });
       const room = decodeURIComponent(url.pathname.split("/")[2] || "general").slice(0, 80);
-      return env.CHAT_ROOM.get(env.CHAT_ROOM.idFromName(room)).fetch(request);
+      const target = new URL(request.url); target.search = `?username=${encodeURIComponent(u.username)}`;
+      return env.CHAT_ROOM.get(env.CHAT_ROOM.idFromName(room)).fetch(new Request(target, request));
     }
     if (url.pathname.startsWith("/api/")) {
       if (!env.DB) return json({ ok: false, error: "D1 binding DB is missing" }, 500);
       await initDatabase(env.DB);
-
       if (url.pathname === "/api/signup" && request.method === "POST") {
         const b = await request.json().catch(() => ({}));
         const username = String(b.username || "").trim(); const email = String(b.email || "").trim().toLowerCase(); const password = String(b.password || "");
-        if (!validUsername(username)) return json({ ok:false,error:"Username 3-30 characters: letters, numbers and _ only" },400);
-        if (!validEmail(email)) return json({ ok:false,error:"Valid Gmail/email address is required" },400);
-        if (password.length < 8) return json({ ok:false,error:"Password must be at least 8 characters" },400);
-        if (!email.endsWith("@gmail.com")) return json({ ok:false,error:"Please use a Gmail address" },400);
+        if (!validUsername(username)) return json({ok:false,error:"Username 3-30 characters: letters, numbers and _ only"},400);
+        if (!validEmail(email) || !email.endsWith("@gmail.com")) return json({ok:false,error:"Please use a valid Gmail address"},400);
+        if (password.length < 8) return json({ok:false,error:"Password must be at least 8 characters"},400);
         if (await env.DB.prepare("SELECT id FROM auth_users WHERE username=? OR email=?").bind(username,email).first()) return json({ok:false,error:"Username or Gmail already registered"},409);
-        const userId=crypto.randomUUID(); const ph=await passwordHash(password);
-        await env.DB.prepare("INSERT INTO auth_users(id,username,email,password_hash) VALUES(?,?,?,?)").bind(userId,username,email,ph).run();
-        const otp=String(Math.floor(100000+Math.random()*900000)); const oh=await sha256(otp);
-        await env.DB.prepare("INSERT INTO email_otps(id,user_id,otp_hash,expires_at) VALUES(?,?,?,datetime('now','+10 minutes'))").bind(crypto.randomUUID(),userId,oh).run();
+        const userId=crypto.randomUUID();
+        await env.DB.prepare("INSERT INTO auth_users(id,username,email,password_hash) VALUES(?,?,?,?)").bind(userId,username,email,await passwordHash(password)).run();
+        const random = new Uint32Array(1); crypto.getRandomValues(random); const otp=String(100000+(random[0]%900000));
+        await env.DB.prepare("INSERT INTO email_otps(id,user_id,otp_hash,expires_at) VALUES(?,?,?,datetime('now','+10 minutes'))").bind(crypto.randomUUID(),userId,await sha256(otp)).run();
         const sent=await sendOtp(env,email,otp);
-        if (!sent) { await env.DB.prepare("DELETE FROM auth_users WHERE id=?").bind(userId).run(); return json({ok:false,error:"Email service is not configured. Add RESEND_API_KEY in Cloudflare Secrets."},503); }
+        if (!sent) { await env.DB.prepare("DELETE FROM email_otps WHERE user_id=?").bind(userId).run(); await env.DB.prepare("DELETE FROM auth_users WHERE id=?").bind(userId).run(); return json({ok:false,error:"Email service is not configured. Add RESEND_API_KEY in Cloudflare Secrets."},503); }
         return json({ok:true,message:"OTP sent to your Gmail",user_id:userId});
       }
-
       if (url.pathname === "/api/verify-email" && request.method === "POST") {
         const b=await request.json().catch(()=>({})); const userId=String(b.user_id||""); const otp=String(b.otp||"").trim();
         const row=await env.DB.prepare("SELECT id,otp_hash,expires_at,attempts FROM email_otps WHERE user_id=? ORDER BY created_at DESC LIMIT 1").bind(userId).first();
@@ -105,23 +106,20 @@ export default {
         await env.DB.prepare("UPDATE auth_users SET email_verified=1 WHERE id=?").bind(userId).run(); await env.DB.prepare("DELETE FROM email_otps WHERE user_id=?").bind(userId).run();
         return json({ok:true,message:"Email verified. You can now login."});
       }
-
       if (url.pathname === "/api/login" && request.method === "POST") {
         const b=await request.json().catch(()=>({})); const identity=String(b.username||b.email||"").trim().toLowerCase(); const password=String(b.password||"");
         const u=await env.DB.prepare("SELECT * FROM auth_users WHERE lower(username)=? OR lower(email)=?").bind(identity,identity).first();
         if(!u || !(await passwordVerify(password,u.password_hash))) return json({ok:false,error:"Invalid username/email or password"},401);
         if(!u.email_verified) return json({ok:false,error:"Email not verified. Complete Gmail OTP verification first."},403);
-        const token=crypto.randomUUID()+crypto.randomUUID(); const th=await sha256(token); const sid=crypto.randomUUID();
-        await env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(u.id).run(); await env.DB.prepare("INSERT INTO sessions(id,user_id,token_hash,expires_at) VALUES(?,?,?,datetime('now','+30 days'))").bind(sid,u.id,th).run();
+        const token=crypto.randomUUID()+crypto.randomUUID(); const sid=crypto.randomUUID();
+        await env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(u.id).run(); await env.DB.prepare("INSERT INTO sessions(id,user_id,token_hash,expires_at) VALUES(?,?,?,datetime('now','+30 days'))").bind(sid,u.id,await sha256(token)).run();
         return new Response(JSON.stringify({ok:true,user:{id:u.id,username:u.username,email:u.email,display_name:u.display_name||u.username}}),{status:200,headers:{"Content-Type":"application/json","Cache-Control":"no-store","Set-Cookie":cookie("sc_session",token,60*60*24*30)}});
       }
-
       if (url.pathname === "/api/logout" && request.method === "POST") { const u=await sessionUser(request,env.DB); if(u) await env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(u.id).run(); return new Response(JSON.stringify({ok:true}),{headers:{"Content-Type":"application/json","Set-Cookie":cookie("sc_session","",0)}}); }
       if (url.pathname === "/api/me" && request.method === "GET") { const u=await sessionUser(request,env.DB); if(!u)return json({ok:false,error:"Not logged in"},401); return json({ok:true,user:u}); }
-
       const u=await sessionUser(request,env.DB);
-      if (url.pathname === "/api/posts" && request.method === "GET") { const {results}=await env.DB.prepare("SELECT id,user_id,username,content,created_at FROM app_posts ORDER BY created_at DESC LIMIT 100").all(); return json({ok:true,posts:results||[]}); }
-      if (url.pathname === "/api/posts" && request.method === "POST") { if(!u)return json({ok:false,error:"Login required"},401); const b=await request.json().catch(()=>({})); const content=String(b.content||"").trim(); if(!content)return json({ok:false,error:"Post is empty"},400); if(content.length>2000)return json({ok:false,error:"Maximum 2000 characters"},400); const id=crypto.randomUUID(); await env.DB.prepare("INSERT INTO app_posts(id,user_id,username,content) VALUES(?,?,?,?,?)".replace("?,?,?,?,?","?,?,?,?" )).bind(id,u.id,u.username,content).run(); return json({ok:true}); }
+      if (url.pathname === "/api/posts" && request.method === "GET") { if(!u)return json({ok:false,error:"Login required"},401); const {results}=await env.DB.prepare("SELECT id,user_id,username,content,created_at FROM app_posts ORDER BY created_at DESC LIMIT 100").all(); return json({ok:true,posts:results||[]}); }
+      if (url.pathname === "/api/posts" && request.method === "POST") { if(!u)return json({ok:false,error:"Login required"},401); const b=await request.json().catch(()=>({})); const content=String(b.content||"").trim(); if(!content)return json({ok:false,error:"Post is empty"},400); if(content.length>2000)return json({ok:false,error:"Maximum 2000 characters"},400); await env.DB.prepare("INSERT INTO app_posts(id,user_id,username,content) VALUES(?,?,?,?)").bind(crypto.randomUUID(),u.id,u.username,content).run(); return json({ok:true}); }
       return json({ok:false,error:"API route not found"},404);
     }
     if(env.ASSETS)return env.ASSETS.fetch(request); return new Response("Not Found",{status:404});
