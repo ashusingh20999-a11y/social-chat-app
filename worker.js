@@ -1,5 +1,5 @@
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{"content-type":"application/json; charset=utf-8","Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"Content-Type"}});
-const BUILD_VERSION="2026-09-04-login-home-fix-12";
+const BUILD_VERSION="2026-09-04-feed-fix-13";
 const uid=()=>crypto.randomUUID();
 async function hashPassword(password){const data=new TextEncoder().encode(password);const digest=await crypto.subtle.digest("SHA-256",data);return [...new Uint8Array(digest)].map(b=>b.toString(16).padStart(2,"0")).join("");}
 function normalizeUsername(v){return v.trim().replace(/^@/,"").toLowerCase()}
@@ -32,7 +32,7 @@ export default {async fetch(request,env){
     return json({ok:true,user:{id:user.id,username:user.username,email:user.email,display_name:user.display_name||user.username,avatar_url:user.avatar_url||""},build:BUILD_VERSION});
    }
    if(url.pathname==="/api/posts"&&request.method==="GET"){
-    const r=await env.DB.prepare("SELECT p.id,p.user_id,p.content,p.created_at,COALESCE(u.username,'user') AS username,COALESCE(u.display_name,'User') AS display_name,COALESCE(u.avatar_url,'') AS avatar_url FROM posts p LEFT JOIN users u ON u.id=p.user_id ORDER BY p.created_at DESC LIMIT 50").all();return json({ok:true,posts:r.results||[],build:BUILD_VERSION});
+    const r=await env.DB.prepare("SELECT id,user_id,content,created_at FROM posts ORDER BY created_at DESC LIMIT 50").all();return json({ok:true,posts:(r.results||[]).map(p=>({id:p.id,user_id:p.user_id,content:p.content,created_at:p.created_at,username:"user",display_name:"User",avatar_url:""})),build:BUILD_VERSION});
    }
    if(url.pathname==="/api/feed"&&request.method==="GET"){
     const userId=String(url.searchParams.get("user_id")||"").trim();if(!userId)return json({ok:false,error:"user_id is required."},400);
