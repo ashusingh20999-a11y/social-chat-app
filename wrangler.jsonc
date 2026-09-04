@@ -2,17 +2,31 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "social-chat-app",
   "main": "worker.js",
-  "compatibility_date": "2026-08-31",
+  "compatibility_date": "2026-09-04",
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
-    "run_worker_first": ["/api/*"]
+    "run_worker_first": ["/api/*", "/chat/*"]
   },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "social-chat-db",
       "database_id": "8bc523fe-292a-4404-9dbf-dd0131999505"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "CHAT_ROOM",
+        "class_name": "ChatRoom"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1-chat-room",
+      "new_sqlite_classes": ["ChatRoom"]
     }
   ]
 }
