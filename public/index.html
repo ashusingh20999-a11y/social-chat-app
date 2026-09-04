@@ -1,127 +1,30 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="hi">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Social Chat — Login & Sign Up</title>
-  <meta name="description" content="Secure login and sign up for Social Chat.">
-  <link rel="stylesheet" href="style.css">
-</head>
-<body>
-  <main class="page">
-    <section class="brand-panel">
-      <div class="brand">
-        <div class="logo">💬</div>
-        <div>
-          <h1>Social Chat</h1>
-          <p>Connect. Chat. Share.</p>
-        </div>
-      </div>
-      <div class="hero-copy">
-        <span class="pill">PRIVATE • FAST • SIMPLE</span>
-        <h2>Talk to the people<br><span>who matter.</span></h2>
-        <p>Sign in or create your account to start chatting.</p>
-      </div>
-      <div class="brand-footer">Your conversations, your community.</div>
-    </section>
-
-    <section class="auth-panel">
-      <div class="auth-card">
-        <div class="tabs">
-          <button class="tab active" data-target="login">Login</button>
-          <button class="tab" data-target="signup">Create account</button>
-        </div>
-
-        <div id="message" class="message" role="alert"></div>
-
-        <form id="login" class="form active">
-          <div class="heading">
-            <h2>Welcome back 👋</h2>
-            <p>Login to continue to Social Chat.</p>
-          </div>
-
-          <label>Email or username
-            <input id="loginIdentity" type="text" placeholder="you@example.com" autocomplete="username" required>
-          </label>
-
-          <label>Password
-            <div class="password-wrap">
-              <input id="loginPassword" type="password" placeholder="Enter your password" autocomplete="current-password" required>
-              <button type="button" class="show-pass" data-for="loginPassword">Show</button>
-            </div>
-          </label>
-
-          <div class="row between">
-            <label class="check"><input type="checkbox" id="remember"> Remember me</label>
-            <button type="button" class="link" id="forgotBtn">Forgot password?</button>
-          </div>
-
-          <button class="primary" type="submit">Login</button>
-          <div class="divider"><span>or</span></div>
-          <button class="google" type="button" id="googleBtn"><span>G</span> Continue with Google</button>
-
-          <p class="switch">New here? <button type="button" class="link switch-tab" data-target="signup">Create an account</button></p>
-        </form>
-
-        <form id="signup" class="form">
-          <div class="heading">
-            <h2>Create your account</h2>
-            <p>Join Social Chat in a few seconds.</p>
-          </div>
-
-          <label>Full name
-            <input id="name" type="text" placeholder="Your name" autocomplete="name" required>
-          </label>
-
-          <label>Username
-            <input id="username" type="text" placeholder="@username" autocomplete="username" minlength="3" required>
-          </label>
-
-          <label>Email
-            <input id="email" type="email" placeholder="you@example.com" autocomplete="email" required>
-          </label>
-
-          <label>Mobile number
-            <input id="phone" type="tel" placeholder="+91 98765 43210" autocomplete="tel" required>
-          </label>
-
-          <div class="two">
-            <label>Password
-              <div class="password-wrap">
-                <input id="password" type="password" placeholder="Create password" autocomplete="new-password" minlength="8" required>
-                <button type="button" class="show-pass" data-for="password">Show</button>
-              </div>
-            </label>
-            <label>Confirm password
-              <input id="confirmPassword" type="password" placeholder="Repeat password" autocomplete="new-password" minlength="8" required>
-            </label>
-          </div>
-
-          <label class="check terms"><input type="checkbox" id="terms" required> I agree to the Terms and Privacy Policy.</label>
-
-          <button class="primary" type="submit">Create account</button>
-          <div class="divider"><span>or</span></div>
-          <button class="google" type="button" id="googleSignupBtn"><span>G</span> Sign up with Google</button>
-
-          <p class="switch">Already have an account? <button type="button" class="link switch-tab" data-target="login">Login</button></p>
-        </form>
-
-        <div id="forgot" class="form">
-          <div class="heading">
-            <h2>Reset your password</h2>
-            <p>Enter your email and we'll send a reset code.</p>
-          </div>
-          <label>Email
-            <input id="resetEmail" type="email" placeholder="you@example.com" autocomplete="email">
-          </label>
-          <button class="primary" id="resetBtn" type="button">Send reset code</button>
-          <p class="switch"><button type="button" class="link switch-tab" data-target="login">← Back to login</button></p>
-        </div>
-
-        <div class="security-note">🔒 Passwords are protected. Real account storage and OTP verification will be connected next.</div>
-      </div>
-    </section>
-  </main>
-  <script src="script.js"></script>
-</body>
-</html>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#4f46e5"><title>Social Chat</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#eef1f7;color:#171923;font-family:Inter,system-ui,-apple-system,sans-serif}.app{width:min(100%,560px);min-height:100vh;margin:auto;background:#fff}.top{position:sticky;top:0;z-index:5;background:#fff;border-bottom:1px solid #e8e8ee;padding:14px 16px;display:flex;justify-content:space-between;align-items:center}.logo{font-size:20px;font-weight:900}.pill{border:0;border-radius:10px;padding:9px 12px;background:#f1f2f6;font-weight:700}.content{padding:16px}.hero{background:linear-gradient(135deg,#eef2ff,#f5f3ff);border-radius:18px;padding:18px;margin-bottom:14px}.hero h1{margin:0 0 5px;font-size:25px}.muted{color:#737987;font-size:13px}.card{border:1px solid #e5e7eb;border-radius:16px;padding:15px;margin-bottom:14px}.field{width:100%;border:1px solid #dfe2e8;border-radius:11px;padding:11px;font:inherit;outline:0}.field:focus{border-color:#6366f1}.textarea{min-height:90px;resize:vertical}.btn{width:100%;border:0;border-radius:11px;padding:11px;margin-top:9px;background:#4f46e5;color:#fff;font-weight:800;cursor:pointer}.btn:disabled{opacity:.5}.feed-title{font-size:19px;font-weight:900;margin:18px 0 10px}.post{border:1px solid #e5e7eb;border-radius:15px;padding:14px;margin-bottom:10px}.post-head{display:flex;gap:10px;align-items:center}.avatar{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:#e0e7ff;color:#4338ca;font-weight:900}.post-user{font-weight:800}.post-time{font-size:11px;color:#8a909d;margin-top:2px}.post-text{white-space:pre-wrap;line-height:1.5;margin-top:12px}.empty{text-align:center;color:#8a909d;padding:20px}.chat-box{height:230px;overflow:auto;background:#f7f8fa;border-radius:11px;padding:10px;margin-top:10px}.msg{padding:7px 10px;border-radius:10px;background:#e5e7eb;margin:5px 0;max-width:82%;width:max-content}.msg.self{margin-left:auto;background:#4f46e5;color:#fff}.msg.system{margin:7px auto;background:#ececf1;color:#666;font-size:12px}.chat-row{display:flex;gap:7px;margin-top:8px}.chat-row .field{flex:1}.chat-row .btn{width:auto;margin:0}.status{margin-top:8px;font-size:12px}.ok{color:#15803d}.err{color:#b91c1c}@media(min-width:561px){body{padding:20px}.app{border:1px solid #e1e4ea;border-radius:20px;overflow:hidden;box-shadow:0 15px 45px #00000012}}
+</style></head>
+<body><div class="app">
+<header class="top"><div class="logo">💬 Social Chat</div><button class="pill" id="clearBtn">Clear Profile</button></header>
+<main class="content">
+<section class="hero"><h1 id="welcome">Social Chat 👋</h1><div class="muted">Post updates and chat with people in real time.</div></section>
+<section class="card"><h3>Profile</h3><input class="field" id="username" maxlength="40" placeholder="Apna username likhein"><button class="btn" id="saveBtn">Save Profile</button><div id="profileStatus" class="status"></div></section>
+<section class="card"><h3>Nayi Post</h3><textarea class="field textarea" id="postContent" maxlength="2000" placeholder="Kuch likhein..."></textarea><button class="btn" id="postBtn">Post Publish Karein</button><div id="postStatus" class="status"></div></section>
+<div class="feed-title">Recent Posts Feed</div><section id="feed"><div class="empty">Feed load ho rahi hai…</div></section>
+<section class="card"><h3>🔴 Live Chat</h3><button class="btn" id="connectBtn">Chat Room Join</button><div id="chatStatus" class="status"></div><div class="chat-box" id="chatBox"></div><div class="chat-row"><input class="field" id="chatInput" maxlength="1000" placeholder="Message likhein..." disabled><button class="btn" id="sendBtn" disabled>Send</button></div></section>
+</main></div>
+<script>
+let socket=null;let username=localStorage.getItem('socialChatUsername')||'';const $=id=>document.getElementById(id);const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+$('username').value=username;updateWelcome();
+function updateWelcome(){ $('welcome').textContent=username?'Welcome, '+username+' 👋':'Social Chat 👋'; }
+async function api(path,options={}){const r=await fetch(path,{cache:'no-store',...options});const text=await r.text();let d;try{d=JSON.parse(text)}catch{throw Error('Server response invalid (HTTP '+r.status+')')};if(!r.ok)throw Error(d.error||'Request failed');return d}
+async function saveUser(){const name=$('username').value.trim();if(!name)return setStatus('profileStatus','Username likhna zaroori hai','err');try{const d=await api('/api/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:name})});username=d.user.username;localStorage.setItem('socialChatUsername',username);updateWelcome();setStatus('profileStatus','Profile save ho gayi ✓','ok')}catch(e){setStatus('profileStatus',e.message,'err')}}
+async function loadFeed(){const feed=$('feed');feed.innerHTML='<div class="empty">Loading posts…</div>';try{const d=await api('/api/posts');const posts=Array.isArray(d.posts)?d.posts:[];if(!posts.length){feed.innerHTML='<div class="empty">Abhi koi posts nahi hain.</div>';return}feed.innerHTML=posts.map(p=>'<article class="post"><div class="post-head"><div class="avatar">'+esc((p.username||'U').charAt(0).toUpperCase())+'</div><div><div class="post-user">@'+esc(p.username||'User')+'</div><div class="post-time">'+esc(new Date(p.created_at).toLocaleString())+'</div></div></div><div class="post-text">'+esc(p.content)+'</div></article>').join('')}catch(e){feed.innerHTML='<div class="empty err">Feed load nahi ho payi: '+esc(e.message)+'</div>'}}
+async function createPost(){if(!username)return setStatus('postStatus','Pehle Profile Save karein','err');const content=$('postContent').value.trim();if(!content)return setStatus('postStatus','Post khali hai','err');try{await api('/api/posts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,content})});$('postContent').value='';setStatus('postStatus','Post published ✓','ok');await loadFeed()}catch(e){setStatus('postStatus',e.message,'err')}}
+function setStatus(id,text,cls){$(id).textContent=text;$(id).className='status '+(cls||'')}
+function addMsg(user,text,type){const div=document.createElement('div');div.className='msg '+(type||'');div.textContent=(user?user+': ':'')+text;$('chatBox').appendChild(div);$('chatBox').scrollTop=$('chatBox').scrollHeight}
+function connectChat(){if(!username)return setStatus('chatStatus','Pehle Profile Save karein','err');if(socket&&socket.readyState===WebSocket.OPEN)return;const protocol=location.protocol==='https:'?'wss:':'ws:';socket=new WebSocket(protocol+'//'+location.host+'/chat/general?username='+encodeURIComponent(username));socket.onopen=()=>{ $('chatInput').disabled=false;$('sendBtn').disabled=false;setStatus('chatStatus','Connected ✓','ok');addMsg('', 'Room se connected','system')};socket.onmessage=e=>{try{const d=JSON.parse(e.data);if(d.type==='system')addMsg('',d.text,'system');else addMsg(d.user,d.text,d.user===username?'self':'')}catch{}};socket.onclose=()=>{ $('chatInput').disabled=true;$('sendBtn').disabled=true;setStatus('chatStatus','Disconnected','err')};socket.onerror=()=>setStatus('chatStatus','Connection error','err')}
+function sendMessage(){const text=$('chatInput').value.trim();if(!text||!socket||socket.readyState!==WebSocket.OPEN)return;socket.send(JSON.stringify({text}));$('chatInput').value='';}
+$('saveBtn').onclick=saveUser;$('postBtn').onclick=createPost;$('connectBtn').onclick=connectChat;$('sendBtn').onclick=sendMessage;$('chatInput').addEventListener('keydown',e=>{if(e.key==='Enter')sendMessage()});$('clearBtn').onclick=()=>{localStorage.removeItem('socialChatUsername');username='';$('username').value='';updateWelcome();setStatus('profileStatus','Profile clear ho gayi','ok');if(socket)socket.close()};window.addEventListener('load',loadFeed);
+</script></body></html>
